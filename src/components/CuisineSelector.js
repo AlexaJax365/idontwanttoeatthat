@@ -3,10 +3,10 @@ import './CuisineSelector.css';
 
 const cuisineOptions = [
   "Italian", "Chinese", "Mexican", "Japanese",
-  "Korean", "Indian", "American", "Thai",
+  "Korean", "Indian", "American", "Thai"
 ];
 
-export default function CuisineSelector() {
+export default function CuisineSelector({ onNext }) {
   const [rejected, setRejected] = useState([]);
 
   const toggleCuisine = (cuisine) => {
@@ -20,6 +20,7 @@ export default function CuisineSelector() {
   const handleNext = () => {
     console.log("Rejected Cuisines:", rejected);
     alert("Rejected: " + rejected.join(', '));
+    onNext(); // move to the next step
   };
 
   return (
@@ -36,7 +37,7 @@ export default function CuisineSelector() {
           </button>
         ))}
       </div>
-      <button onClick={onNext}>Next</button>
+      <button onClick={handleNext}>Next</button>
     </div>
   );
 }
