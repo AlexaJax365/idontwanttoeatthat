@@ -26,8 +26,19 @@ function App() {
   }} />
 )}
 
-      {step === 2 && <MealTypeSelector onSelect={handleMealTypeSelect} />}
-      {step === 3 && <MealSuggestions rejectedCuisines={rejectedCuisines} />}
+      {step === 2 && (
+	<MealTypeSelector onSelect={(type) => {
+    	  setMealType(type.toLowerCase()); // save the choice as 'home' or 'takeout'
+          setStep(3);
+  }} />
+)}
+
+     {step === 3 && (
+  <MealSuggestions
+    rejectedCuisines={rejectedCuisines}
+    mealType={mealType}
+  />
+)}
     </div>
   );
 }

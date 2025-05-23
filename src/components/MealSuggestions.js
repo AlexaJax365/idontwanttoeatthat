@@ -1,24 +1,29 @@
+export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }) {
+
 import React, { useState } from 'react';
 import './MealSuggestions.css';
 
 const mockMeals = [
-  { name: "Spaghetti Bolognese", image: "https://source.unsplash.com/featured/?spaghetti", cuisine: "Italian" },
-  { name: "Sushi Platter", image: "https://source.unsplash.com/featured/?sushi", cuisine: "Japanese" },
-  { name: "Chicken Tikka Masala", image: "https://source.unsplash.com/featured/?indianfood", cuisine: "Indian" },
-  { name: "Tacos", image: "https://source.unsplash.com/featured/?tacos", cuisine: "Mexican" },
-  { name: "Bibimbap", image: "https://source.unsplash.com/featured/?bibimbap", cuisine: "Korean" },
-  { name: "Pad Thai", image: "https://source.unsplash.com/featured/?padthai", cuisine: "Thai" },
-  { name: "Fried Chicken", image: "https://source.unsplash.com/featured/?friedchicken", cuisine: "American" },
-  { name: "Burrito Bowl", image: "https://source.unsplash.com/featured/?burrito", cuisine: "Mexican" },
+  { name: "Spaghetti Bolognese", image: "https://source.unsplash.com/featured/?spaghetti", cuisine: "Italian", type: "home" },
+  { name: "Sushi Platter", image: "https://source.unsplash.com/featured/?sushi", cuisine: "Japanese", type: "takeout" },
+  { name: "Chicken Tikka Masala", image: "https://source.unsplash.com/featured/?indianfood", cuisine: "Indian", type: "home" },
+  { name: "Tacos", image: "https://source.unsplash.com/featured/?tacos", cuisine: "Mexican", type: "takeout" },
+  { name: "Bibimbap", image: "https://source.unsplash.com/featured/?bibimbap", cuisine: "Korean", type: "home" },
+  { name: "Pad Thai", image: "https://source.unsplash.com/featured/?padthai", cuisine: "Thai", type: "home" },
+  { name: "Fried Chicken", image: "https://source.unsplash.com/featured/?friedchicken", cuisine: "American", type: "takeout" },
+  { name: "Burrito Bowl", image: "https://source.unsplash.com/featured/?burrito", cuisine: "Mexican", type: "takeout" },
 ];
 
 export default function MealSuggestions({ rejectedCuisines = [] }) {
   const [liked, setLiked] = useState([]);
   const [rejected, setRejected] = useState([]);
 
-  const visibleMeals = mockMeals.filter(
-    meal => !rejectedCuisines.includes(meal.cuisine)
-  );
+ const visibleMeals = mockMeals.filter(
+  meal =>
+    !rejectedCuisines.includes(meal.cuisine) &&
+    meal.type === mealType
+);
+
 
   const handleSelect = (meal, likedMeal) => {
     if (likedMeal) {
