@@ -1,0 +1,17 @@
+
+AI Logic Spec - I Don't Want to Eat That
+
+User profile includes:
+- Rejected cuisines
+- Rejected tags (spicy, creamy, etc.)
+- Meal history (accepted/rejected)
+
+Meal scores:
+- Cuisine rejected: -50
+- Tag rejected: -20
+- Recently eaten: -30
+- Past rejection: -100
+- Similar to likes: +40
+- Similar to dislikes: -40
+
+Suggestions filtered by score threshold.
