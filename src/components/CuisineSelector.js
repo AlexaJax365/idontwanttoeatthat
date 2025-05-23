@@ -20,7 +20,7 @@ export default function CuisineSelector({ onNext }) {
   const handleNext = () => {
     console.log("Rejected Cuisines:", rejected);
     alert("Rejected: " + rejected.join(', '));
-    onNext(); // move to the next step
+    onNext(rejected); // move to the next step
   };
 
   return (
