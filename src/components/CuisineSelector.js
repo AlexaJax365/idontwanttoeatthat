@@ -36,7 +36,7 @@ export default function CuisineSelector() {
           </button>
         ))}
       </div>
-      <button onClick={handleNext}>Next</button>
+      <button onClick={onNext}>Next</button>
     </div>
   );
 }
