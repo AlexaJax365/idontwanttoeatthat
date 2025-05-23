@@ -1,0 +1,22 @@
+.cuisine-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.cuisine-grid button {
+  padding: 10px 16px;
+  font-size: 16px;
+  border-radius: 20px;
+  border: 2px solid #ad5a27;
+  background-color: #fff7f0;
+  color: #ad5a27;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.cuisine-grid button.selected {
+  background-color: #ad5a27;
+  color: #fff;
+}

@@ -1,48 +1,42 @@
-
 import React, { useState } from 'react';
-import axios from 'axios';
+import './CuisineSelector.css';
 
-const cuisineOptions = ["Italian", "Mexican", "Chinese", "Japanese", "Korean", "Indian", "Thai", "American"];
+const cuisineOptions = [
+  "Italian", "Chinese", "Mexican", "Japanese",
+  "Korean", "Indian", "American", "Thai",
+];
 
-export default function CuisineSelector({ userId }) {
-  const [selectedCuisines, setSelectedCuisines] = useState([]);
+export default function CuisineSelector() {
+  const [rejected, setRejected] = useState([]);
 
   const toggleCuisine = (cuisine) => {
-    setSelectedCuisines(prev =>
+    setRejected(prev =>
       prev.includes(cuisine)
-        ? prev.filter(item => item !== cuisine)
+        ? prev.filter(c => c !== cuisine)
         : [...prev, cuisine]
     );
   };
 
-  const submitRejections = async () => {
-    try {
-      await axios.post("http://localhost:5000/api/cuisines/reject", {
-        userId,
-        rejectedCuisines: selectedCuisines,
-      });
-      alert("Preferences saved!");
-    } catch (error) {
-      console.error("Error sending rejections:", error);
-      alert("Failed to save preferences.");
-    }
+  const handleNext = () => {
+    console.log("Rejected Cuisines:", rejected);
+    alert("Rejected: " + rejected.join(', '));
   };
 
   return (
     <div>
-      <h2>What cuisines do you NOT want?</h2>
-      <div className="cuisine-buttons">
+      <h2>What don’t you want to eat?</h2>
+      <div className="cuisine-grid">
         {cuisineOptions.map(cuisine => (
           <button
             key={cuisine}
-            className={selectedCuisines.includes(cuisine) ? "selected" : ""}
+            className={rejected.includes(cuisine) ? 'selected' : ''}
             onClick={() => toggleCuisine(cuisine)}
           >
             {cuisine}
           </button>
         ))}
       </div>
-      <button onClick={submitRejections}>Next</button>
+      <button onClick={handleNext}>Next</button>
     </div>
   );
 }
