@@ -1,5 +1,3 @@
-export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }) {
-
 import React, { useState } from 'react';
 import './MealSuggestions.css';
 
