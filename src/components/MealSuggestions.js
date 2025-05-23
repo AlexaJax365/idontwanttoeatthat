@@ -13,15 +13,20 @@ const mockMeals = [
 ];
 
 export default function MealSuggestions({ rejectedCuisines = [] }) {
+  console.log("Rejected Cuisines:", rejectedCuisines);
+  console.log("Meal Type:", mealType);
+
   const [liked, setLiked] = useState([]);
   const [rejected, setRejected] = useState([]);
 
  const visibleMeals = mockMeals.filter(
   meal =>
-    !rejectedCuisines.includes(meal.cuisine) &&
-    meal.type === mealType
+    (!rejectedCuisines.includes(meal.cuisine)) &&
+    (mealType ? meal.type === mealType : true)
 );
 
+
+  console.log("Visible Meals:", visibleMeals);
 
   const handleSelect = (meal, likedMeal) => {
     if (likedMeal) {
