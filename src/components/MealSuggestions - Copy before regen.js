@@ -12,32 +12,41 @@ const mockMeals = [
   { name: "Burrito Bowl", image: "https://source.unsplash.com/featured/?burrito", cuisine: "Mexican", type: "takeout" },
 ];
 
-export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }) {
-  const [liked, setLiked] = useState([]);
-  const [rejected, setRejected] = useState([]);
-
+export default function MealSuggestions({ rejectedCuisines = [] }) {
   console.log("Rejected Cuisines:", rejectedCuisines);
   console.log("Meal Type:", mealType);
 
-  const visibleMeals = mockMeals.filter(
-    (meal) =>
-      !rejectedCuisines.includes(meal.cuisine) &&
-      meal.type === mealType
-  );
+  const [liked, setLiked] = useState([]);
+  const [rejected, setRejected] = useState([]);
+
+ const visibleMeals = mockMeals.filter(
+  meal =>
+    (!rejectedCuisines.includes(meal.cuisine)) &&
+    (mealType ? meal.type === mealType : true)
+);
+
 
   console.log("Visible Meals:", visibleMeals);
+
+  const handleSelect = (meal, likedMeal) => {
+    if (likedMeal) {
+      setLiked(prev => [...prev, meal]);
+    } else {
+      setRejected(prev => [...prev, meal]);
+    }
+  };
 
   return (
     <div className="meal-suggestion-grid">
       <h2>Here are some ideas:</h2>
       <div className="grid">
         {visibleMeals.map((meal, index) => (
-          <div className="card" key={index}>
+  	  <div className="card" key={index}>
             <img src={meal.image} alt={meal.name} />
             <h3>{meal.name}</h3>
             <div className="buttons">
-              <button onClick={() => setRejected(prev => [...prev, meal])}>Nope</button>
-              <button onClick={() => setLiked(prev => [...prev, meal])}>Sounds Good</button>
+              <button onClick={() => handleSelect(meal, false)}>Nope</button>
+              <button onClick={() => handleSelect(meal, true)}>Sounds Good</button>
             </div>
           </div>
         ))}
