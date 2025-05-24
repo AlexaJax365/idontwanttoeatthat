@@ -15,34 +15,37 @@ function App() {
       <h1>I Don’t Want to Eat That</h1>
 
       {step === 1 && (
-  <CuisineSelector
-    onNext={(rejected) => {
-      setRejectedCuisines(rejected);
-      setStep(2);
-    }}
-  />
-)}
+        <CuisineSelector
+          onNext={(rejected) => {
+            setRejectedCuisines(rejected);
+            setStep(2);
+          }}
+        />
+      )}
 
-{step === 2 && (
-  <div>
-    <MealTypeSelector
-      onSelect={(type) => {
-        setMealType(type.toLowerCase());
-        setStep(3);
-      }}
-    />
-    <button onClick={goBack}>⬅ Back</button>
-  </div>
-)}
+      {step === 2 && (
+        <div>
+          <MealTypeSelector
+            onSelect={(type) => {
+              setMealType(type.toLowerCase());
+              setStep(3);
+            }}
+          />
+          <button onClick={goBack}>⬅ Back</button>
+        </div>
+      )}
 
-{step === 3 && (
-  <div>
-    <MealSuggestions
-      rejectedCuisines={rejectedCuisines}
-      mealType={mealType}
-    />
-    <button onClick={goBack}>⬅ Back</button>
-  </div>
-)}
+      {step === 3 && (
+        <div>
+          <MealSuggestions
+            rejectedCuisines={rejectedCuisines}
+            mealType={mealType}
+          />
+          <button onClick={goBack}>⬅ Back</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default App;
