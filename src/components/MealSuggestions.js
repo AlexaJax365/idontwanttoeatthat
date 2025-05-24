@@ -2,14 +2,19 @@ import React, { useState } from 'react';
 import './MealSuggestions.css';
 
 const mockMeals = [
-  { name: "Spaghetti Bolognese", image: "https://source.unsplash.com/featured/?spaghetti", cuisine: "Italian", type: "home" },
-  { name: "Sushi Platter", image: "https://source.unsplash.com/featured/?sushi", cuisine: "Japanese", type: "takeout" },
-  { name: "Chicken Tikka Masala", image: "https://source.unsplash.com/featured/?indianfood", cuisine: "Indian", type: "home" },
-  { name: "Tacos", image: "https://source.unsplash.com/featured/?tacos", cuisine: "Mexican", type: "takeout" },
-  { name: "Bibimbap", image: "https://source.unsplash.com/featured/?bibimbap", cuisine: "Korean", type: "home" },
-  { name: "Pad Thai", image: "https://source.unsplash.com/featured/?padthai", cuisine: "Thai", type: "home" },
-  { name: "Fried Chicken", image: "https://source.unsplash.com/featured/?friedchicken", cuisine: "American", type: "takeout" },
-  { name: "Burrito Bowl", image: "https://source.unsplash.com/featured/?burrito", cuisine: "Mexican", type: "takeout" },
+  { name: "Spaghetti Bolognese", cuisine: "Italian", type: "home" },
+  { name: "Sushi Platter", cuisine: "Japanese", type: "takeout" },
+  { name: "Chicken Tikka Masala", cuisine: "Indian", type: "home" },
+  { name: "Tacos", cuisine: "Mexican", type: "takeout" },
+  { name: "Bibimbap", cuisine: "Korean", type: "home" },
+  { name: "Pad Thai", cuisine: "Thai", type: "home" },
+  { name: "Fried Chicken", cuisine: "American", type: "takeout" },
+  { name: "Burrito Bowl", cuisine: "Mexican", type: "takeout" },
+  { name: "Burger and Fries", cuisine: "American", type: "takeout", image: "https://source.unsplash.com/featured/?burger" },
+  { name: "Pho", cuisine: "Vietnamese", type: "takeout", image: "https://source.unsplash.com/featured/?pho" },
+  { name: "Steak and Potatoes", cuisine: "American", type: "home", image: "https://source.unsplash.com/featured/?steak" },
+  { name: "Ramen", cuisine: "Japanese", type: "takeout", image: "https://source.unsplash.com/featured/?ramen" },
+
 ];
 
 export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }) {
@@ -26,6 +31,22 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
   );
 
   console.log("Visible Meals:", visibleMeals);
+
+{visibleMeals.length === 0 ? (
+  <p>No matching meals found. Try going back and adjusting your preferences.</p>
+) : (
+  visibleMeals.map((meal, index) => (
+    <div className="card" key={index}>
+      <img src={meal.image} alt={meal.name} />
+      <h3>{meal.name}</h3>
+      <div className="buttons">
+        <button onClick={() => setRejected(prev => [...prev, meal])}>Nope</button>
+        <button onClick={() => setLiked(prev => [...prev, meal])}>Sounds Good</button>
+      </div>
+    </div>
+  ))
+)}
+
 
   return (
     <div className="meal-suggestion-grid">
