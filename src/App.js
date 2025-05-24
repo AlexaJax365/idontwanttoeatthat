@@ -8,36 +8,41 @@ function App() {
   const [mealType, setMealType] = useState("");
   const [rejectedCuisines, setRejectedCuisines] = useState([]);
 
+  const goBack = () => setStep(prev => Math.max(1, prev - 1));
+
   return (
     <div>
       <h1>I Don’t Want to Eat That</h1>
 
       {step === 1 && (
-        <CuisineSelector
-          onNext={(rejected) => {
-            setRejectedCuisines(rejected);
-            setStep(2);
-          }}
-        />
-      )}
+  <CuisineSelector
+    onNext={(rejected) => {
+      setRejectedCuisines(rejected);
+      setStep(2);
+    }}
+  />
+)}
 
-      {step === 2 && (
-        <MealTypeSelector
-          onSelect={(type) => {
-            setMealType(type.toLowerCase());
-            setStep(3);
-          }}
-        />
-      )}
+{step === 2 && (
+  <div>
+    <MealTypeSelector
+      onSelect={(type) => {
+        setMealType(type.toLowerCase());
+        setStep(3);
+      }}
+    />
+    <button onClick={goBack}>⬅ Back</button>
+  </div>
+)}
 
-      {step === 3 && (
-        <MealSuggestions
-          rejectedCuisines={rejectedCuisines}
-          mealType={mealType}
-        />
-      )}
-    </div>
-  );
-}
+{step === 3 && (
+  <div>
+    <MealSuggestions
+      rejectedCuisines={rejectedCuisines}
+      mealType={mealType}
+    />
+    <button onClick={goBack}>⬅ Back</button>
+  </div>
+)}
 
 export default App;
