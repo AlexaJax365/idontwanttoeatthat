@@ -1,5 +1,5 @@
 {
-  "name": "client",
+  "name": "client-app",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -32,4 +32,3 @@
   }
 }
 
-// redeploy trigger
