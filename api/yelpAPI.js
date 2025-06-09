@@ -37,6 +37,7 @@ export default async function handler(req, res) {
     const response = await axios.get("https://api.yelp.com/v3/businesses/search", {
       headers: {
         Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
       params,
     });
@@ -44,7 +45,15 @@ export default async function handler(req, res) {
     res.status(200).json(response.data.businesses);
   } catch (error) {
     const msg = error.response?.data || error.message;
+
+    // Log full error for debugging
     console.error("❌ Yelp API Error:", msg);
-    res.status(500).json({ error: "Failed to fetch data from Yelp", details: msg });
+
+    // Ensure we're returning valid JSON even on error
+    res.setHeader("Content-Type", "application/json");
+    res.status(500).json({
+      error: "Failed to fetch data from Yelp",
+      details: typeof msg === "string" ? msg : JSON.stringify(msg),
+    });
   }
 }
