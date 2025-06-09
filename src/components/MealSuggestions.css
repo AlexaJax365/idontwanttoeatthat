@@ -49,3 +49,21 @@
   background-color: #ad5a27;
   color: white;
 }
+
+
+.back-button {
+  margin: 1rem;
+  padding: 0.5rem 1rem;
+  font-size: 14px;
+  border: 2px solid #ad5a27;
+  background-color: white;
+  color: #ad5a27;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+.back-button:hover {
+  background-color: #ad5a27;
+  color: white;
+}
