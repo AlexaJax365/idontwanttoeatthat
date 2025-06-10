@@ -3,7 +3,8 @@ import './CuisineSelector.css';
 
 const cuisineOptions = [
   "Italian", "Chinese", "Mexican", "Japanese",
-  "Korean", "Indian", "American", "Thai"
+  "Korean", "Indian", "American", "Thai", "Greek", 
+  "French","MiddleEastern","Vietnamese"
 ];
 
 export default function CuisineSelector({ onNext }) {
