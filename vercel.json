@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "api/**/*.{js,ts}": {
-      "includedFiles": ["node_modules/axios/**/*"]
-    }
-  }
-}
