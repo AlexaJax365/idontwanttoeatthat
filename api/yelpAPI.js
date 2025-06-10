@@ -2,6 +2,19 @@
 
 const axios = require("axios/dist/node/axios.cjs");
 
+const categoryMap = {
+  "Indian": "indpak",
+  "Mexican": "mexican",
+  "Chinese": "chinese",
+  "Thai": "thai",
+  "Korean": "korean",
+  "Japanese": "japanese",
+  "Italian": "italian",
+  "Vietnamese": "vietnamese",
+  "American": "tradamerican",
+  "Filipino": "filipino"
+};
+
 export default async function handler(req, res) {
   const apiKey = process.env.YELP_API_KEY;
   if (!apiKey) {
@@ -17,6 +30,13 @@ export default async function handler(req, res) {
     categories = "",
     limit = 10,
   } = req.query;
+
+  const rejectedList = rejected.split(',').map(r => r.trim());
+  const allCategories = Object.values(categoryMap);
+  const includedCategories = allCategories.filter(cat => {
+    const name = Object.keys(categoryMap).find(key => categoryMap[key] === cat);
+    return !rejectedList.includes(name);
+  });
 
   const params = {
     term,

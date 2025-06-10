@@ -9,7 +9,7 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
 
   useEffect(() => {
     function fetchMealsWithLocation(lat, lon) {
-      fetch(`/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20`)
+      fetch(`/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&rejected=${rejectedCuisines.join(',')}`)
         .then(res => res.json())
         .then(data => {
           const filtered = data.filter(business => {
