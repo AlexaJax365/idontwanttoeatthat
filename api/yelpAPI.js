@@ -46,7 +46,6 @@ export default async function handler(req, res) {
 
     console.error("❌ Yelp API Error:", rawData || error.message);
 
-    // Send a safe response for frontend
     res.status(status).json({
       error: "Yelp API call failed",
       details: typeof rawData === "object" ? rawData : { message: String(rawData || error.message) },
