@@ -2,17 +2,24 @@
 
 const axios = require("axios/dist/node/axios.cjs");
 
+// Map human-friendly cuisine names to Yelp API category codes
 const categoryMap = {
-  "Indian": "indpak",
-  "Mexican": "mexican",
-  "Chinese": "chinese",
-  "Thai": "thai",
-  "Korean": "korean",
-  "Japanese": "japanese",
-  "Italian": "italian",
-  "Vietnamese": "vietnamese",
-  "American": "tradamerican",
-  "Filipino": "filipino"
+  Italian: "italian",
+  Japanese: "japanese",
+  Indian: "indpak",
+  Mexican: "mexican",
+  Korean: "korean",
+  Thai: "thai",
+  American: "tradamerican",
+  Vietnamese: "vietnamese",
+  Chinese: "chinese",
+  Mediterranean: "mediterranean",
+  Greek: "greek",
+  French: "french",
+  Spanish: "spanish",
+  Filipino: "filipino",
+  MiddleEastern: "mideastern",
+  FastFood: "hotdogs"
 };
 
 export default async function handler(req, res) {
@@ -22,26 +29,31 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Missing Yelp API Key" });
   }
 
+  // removed categories = "" code
   const {
     term = "restaurants",
     latitude,
     longitude,
     location = "New York",
-    categories = "",
     limit = 10,
+    rejected = ""
   } = req.query;
 
-  const rejectedList = rejected.split(',').map(r => r.trim());
+  // Determine which categories to include based on rejections
+  const rejectedList = rejected.split(',').map(r => r.trim().toLowerCase());
   const allCategories = Object.values(categoryMap);
   const includedCategories = allCategories.filter(cat => {
     const name = Object.keys(categoryMap).find(key => categoryMap[key] === cat);
-    return !rejectedList.includes(name);
+    return !rejectedList.includes(name.toLowerCase());
   });
 
+  const categories = includedCategories.join(",");
+
+  // Construct query params
   const params = {
     term,
     categories,
-    limit,
+    limit
   };
 
   if (latitude && longitude) {

@@ -9,7 +9,9 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
 
   useEffect(() => {
     function fetchMealsWithLocation(lat, lon) {
-      fetch(`/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&rejected=${rejectedCuisines.join(',')}`)
+      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&rejected=${rejectedCuisines.join(',')}`;
+      
+      fetch(query)
         .then(res => res.json())
         .then(data => {
           const filtered = data.filter(business => {
@@ -19,11 +21,10 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
               categories.includes(rej.toLowerCase())
             );
 
-            // Filter by meal type (assumes takeout is any restaurant for now)
-            const isTakeout = mealType === "takeout";
-            const isMatchType = isTakeout ? true : false;
+            // mealType logic – only skip if "home" is selected, which has no match
+            if (mealType === "home") return false;
 
-            return !isRejected && isMatchType;
+            return !isRejected;
           });
 
           // Debug logs
@@ -47,9 +48,9 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
           const { latitude, longitude } = position.coords;
           fetchMealsWithLocation(latitude, longitude);
         },
-        (error) => {
+        () => {
           console.warn("Location access denied. Using default location.");
-          fetchMealsWithLocation(40.7128, -74.0060); // Default to NYC
+          fetchMealsWithLocation(40.7128, -74.0060); // NYC fallback
         }
       );
     } else {
@@ -60,7 +61,7 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
 
   return (
     <div className="meal-suggestion-grid">
-      <h2>Here are some {mealType === "takeout" ? "takeout" : "home-style"} ideas near you:</h2>
+      <h2>Here are some {mealType === "takeout" ? "takeout" : "restaurant-style"} ideas near you:</h2>
 
       {loading ? (
         <p>Loading...</p>
