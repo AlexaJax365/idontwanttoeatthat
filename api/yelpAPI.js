@@ -1,6 +1,6 @@
 // Serverless function on Vercel to call Yelp API securely
 
-const axios = require("axios");
+const axios = require("axios/dist/node/axios.cjs");
 
 export default async function handler(req, res) {
   const apiKey = process.env.YELP_API_KEY;
