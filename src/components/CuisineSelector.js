@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import './CuisineSelector.css'; // Make sure this exists and includes .rejected styling
 
 export default function CuisineSelector({ onNext }) {
   const [cuisines, setCuisines] = useState([]);
   const [rejected, setRejected] = useState([]);
   const [batchIndex, setBatchIndex] = useState(0);
-  const [location, setLocation] = useState({ lat: 40.7128, lon: -74.0060 }); // Default to NYC
+  const [location, setLocation] = useState(null); // null initially
 
   const batchSize = 10;
 
@@ -15,28 +16,27 @@ export default function CuisineSelector({ onNext }) {
           const { latitude, longitude } = position.coords;
           setLocation({ lat: latitude, lon: longitude });
         },
-        () => fetchCuisines() // fallback if location access denied
+        () => {
+          // fallback to NYC
+          setLocation({ lat: 40.7128, lon: -74.0060 });
+        }
       );
     } else {
-      fetchCuisines(); // fallback if no geolocation
+      setLocation({ lat: 40.7128, lon: -74.0060 }); // fallback if not supported
     }
   }, []);
 
   useEffect(() => {
-    if (location.lat && location.lon) {
-      fetchCuisines();
+    if (location) {
+      fetch(`/api/yelpCategoriesByLocation?latitude=${location.lat}&longitude=${location.lon}`)
+        .then(res => res.json())
+        .then(data => setCuisines(data))
+        .catch(err => {
+          console.error("Failed to load categories", err);
+          setCuisines([]);
+        });
     }
   }, [location]);
-
-  function fetchCuisines() {
-    fetch(`/api/yelpCategoriesByLocation?latitude=${location.lat}&longitude=${location.lon}`)
-      .then(res => res.json())
-      .then(data => setCuisines(data))
-      .catch(err => {
-        console.error("Failed to load categories", err);
-        setCuisines([]);
-      });
-  }
 
   const toggleReject = (cuisine) => {
     setRejected(prev =>
@@ -60,7 +60,7 @@ export default function CuisineSelector({ onNext }) {
   return (
     <div>
       <h2>Tap the cuisines you DON’T want:</h2>
-      <div className="grid">
+      <div className="cuisine-grid">
         {currentBatch.map((cuisine, idx) => (
           <button
             key={idx}

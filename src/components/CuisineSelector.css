@@ -16,7 +16,8 @@
   transition: 0.3s;
 }
 
-.cuisine-grid button.selected {
+.cuisine-grid button.rejected {
   background-color: #ad5a27;
   color: #fff;
 }
+
