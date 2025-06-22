@@ -21,10 +21,16 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
               categories.includes(rej.toLowerCase())
             );
 
+            const isAccepted = acceptedCuisines.some(acc =>
+              categories.includes(acc.toLowerCase())
+            );
+
             // mealType logic – Yelp API is only for restaurant data, so skip home
             if (mealType === "home") return false;
 
-            return !isRejected;
+            console.log("Accepted Cuisines:", acceptedCuisines);
+
+            return isAccepted && !isRejected;
           });
 
           // Debug logs
