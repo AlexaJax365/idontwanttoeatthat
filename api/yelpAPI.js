@@ -41,6 +41,7 @@ export default async function handler(req, res) {
 
   // Determine which categories to include based on rejections
   const rejectedList = rejected.split(',').map(r => r.trim().toLowerCase());
+  const acceptedList = req.query.accepted?.split(',').map(item => item.trim().toLowerCase()) || [];
   const allCategories = Object.values(categoryMap);
   const includedCategories = allCategories.filter(cat => {
     const name = Object.keys(categoryMap).find(key => categoryMap[key] === cat);
@@ -69,6 +70,13 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${apiKey}`,
       },
       params,
+    });
+
+    const acceptedList = req.query.accepted?.split(',').map(item => item.trim().toLowerCase()) || [];
+
+    const filteredBusinesses = response.data.businesses.filter(biz => {
+      const bizCategories = biz.categories.map(c => c.title.toLowerCase());
+      return bizCategories.some(cat => acceptedList.includes(cat));
     });
 
     res.status(200).json(response.data.businesses);

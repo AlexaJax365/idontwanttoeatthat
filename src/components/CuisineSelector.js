@@ -73,7 +73,11 @@ export default function CuisineSelector({ onNext }) {
       </div>
       <div style={{ marginTop: '1em' }}>
         <button onClick={nextBatch}>Show More ⟳</button>
-        <button onClick={() => onNext(rejected)} style={{ marginLeft: '1em' }}>Next ➡</button>
+        <button onClick={() => {
+	  const shownTitles = currentBatch.map(c => c.title);
+	    const accepted = shownTitles.filter(title => !rejected.includes(title));
+	    onNext(rejected, accepted);
+	}}>Next ➡</button>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './MealSuggestions.css';
 
-export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }) {
+export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisines = [], mealType = "" }) {
   const [meals, setMeals] = useState([]);
   const [liked, setLiked] = useState([]);
   const [rejected, setRejected] = useState([]);
@@ -9,7 +9,7 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
 
   useEffect(() => {
     function fetchMealsWithLocation(lat, lon) {
-      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&rejected=${rejectedCuisines.join(',')}`;
+      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&accepted=${acceptedCuisines.join(',')}`;
       
       fetch(query)
         .then(res => res.json())

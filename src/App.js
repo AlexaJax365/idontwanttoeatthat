@@ -7,6 +7,8 @@ function App() {
   const [step, setStep] = useState(1);
   const [mealType, setMealType] = useState("");
   const [rejectedCuisines, setRejectedCuisines] = useState([]);
+  const [acceptedCuisines, setAcceptedCuisines] = useState([]);
+
 
   const goBack = () => setStep(prev => Math.max(1, prev - 1));
 
@@ -28,8 +30,9 @@ function App() {
       {step === 2 && (
         <div>
           <CuisineSelector
-            onNext={(rejected) => {
+            onNext={(rejected,accepted) => {
               setRejectedCuisines(rejected);
+	      setAcceptedCuisines(accepted);
               setStep(3);
             }}
           />
@@ -42,6 +45,7 @@ function App() {
         <div>
           <MealSuggestions
             rejectedCuisines={rejectedCuisines}
+            acceptedCuisines={acceptedCuisines}
             mealType={mealType}
           />
           <button onClick={goBack}>⬅ Back</button>
