@@ -8,8 +8,8 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    function fetchMealsWithLocation(lat, lon) {
-      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&accepted=${acceptedCuisines.join(',')}`;
+    function fetchMealsWithRetry(lat, lon, radius = 1000) {
+      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&radius=${radius}&accepted=${acceptedCuisines.join(',')}`;
       
       fetch(query)
         .then(res => res.json())
@@ -25,21 +25,18 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
               categories.includes(acc.toLowerCase())
             );
 
-            // mealType logic – Yelp API is only for restaurant data, so skip home
             if (mealType === "home") return false;
-
-            console.log("Accepted Cuisines:", acceptedCuisines);
 
             return isAccepted && !isRejected;
           });
 
-          // Debug logs
-          console.log("Rejected Cuisines:", rejectedCuisines);
-          console.log("Meal Type:", mealType);
-          console.log("Yelp Meals:", filtered);
-
-          setMeals(filtered);
-          setLoading(false);
+          if (filtered.length === 0 && radius < 40000) {
+            console.log(`🔁 No results at ${radius}m, retrying with larger radius...`);
+            fetchMealsWithRetry(lat, lon, radius + 3000);
+          } else {
+            setMeals(filtered);
+            setLoading(false);
+          }
         })
         .catch(err => {
           console.error("Error fetching Yelp meals:", err);
@@ -52,16 +49,16 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          fetchMealsWithLocation(latitude, longitude);
+          fetchMealsWithRetry(latitude, longitude);
         },
         () => {
           console.warn("Location access denied. Using default location.");
-          fetchMealsWithLocation(40.7128, -74.0060); // NYC fallback
+          fetchMealsWithRetry(40.7128, -74.0060); // NYC fallback
         }
       );
     } else {
       console.warn("Geolocation not supported.");
-      fetchMealsWithLocation(40.7128, -74.0060);
+      fetchMealsWithRetry(40.7128, -74.0060);
     }
   }, [rejectedCuisines, acceptedCuisines, mealType]);
 

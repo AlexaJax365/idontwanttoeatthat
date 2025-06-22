@@ -36,6 +36,7 @@ export default async function handler(req, res) {
     longitude,
     location = "New York",
     limit = 10,
+    radius = 1000,
     rejected = ""
   } = req.query;
 
@@ -56,6 +57,10 @@ export default async function handler(req, res) {
     categories,
     limit
   };
+
+  if (req.query.radius) {
+    params.radius = parseInt(req.query.radius); // optional radius
+  }
 
   if (latitude && longitude) {
     params.latitude = latitude;
