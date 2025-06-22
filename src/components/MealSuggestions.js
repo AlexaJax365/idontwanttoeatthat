@@ -21,7 +21,7 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
               categories.includes(rej.toLowerCase())
             );
 
-            // mealType logic – only skip if "home" is selected, which has no match
+            // mealType logic – Yelp API is only for restaurant data, so skip home
             if (mealType === "home") return false;
 
             return !isRejected;
@@ -57,7 +57,7 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
       console.warn("Geolocation not supported.");
       fetchMealsWithLocation(40.7128, -74.0060);
     }
-  }, [rejectedCuisines, mealType]);
+  }, [rejectedCuisines, acceptedCuisines, mealType]);
 
   return (
     <div className="meal-suggestion-grid">

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import './CuisineSelector.css'; // Make sure this exists and includes .rejected styling
+import './CuisineSelector.css';
 
 export default function CuisineSelector({ onNext }) {
   const [cuisines, setCuisines] = useState([]);
   const [rejected, setRejected] = useState([]);
   const [batchIndex, setBatchIndex] = useState(0);
-  const [location, setLocation] = useState(null); // null initially
+  const [location, setLocation] = useState(null);
 
   const batchSize = 10;
 
@@ -17,12 +17,11 @@ export default function CuisineSelector({ onNext }) {
           setLocation({ lat: latitude, lon: longitude });
         },
         () => {
-          // fallback to NYC
           setLocation({ lat: 40.7128, lon: -74.0060 });
         }
       );
     } else {
-      setLocation({ lat: 40.7128, lon: -74.0060 }); // fallback if not supported
+      setLocation({ lat: 40.7128, lon: -74.0060 });
     }
   }, []);
 
@@ -55,6 +54,8 @@ export default function CuisineSelector({ onNext }) {
     }
   };
 
+  // 🔥 All cuisines shown up to this point
+  const shownCuisines = cuisines.slice(0, (batchIndex + 1) * batchSize);
   const currentBatch = cuisines.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
 
   return (
@@ -74,10 +75,10 @@ export default function CuisineSelector({ onNext }) {
       <div style={{ marginTop: '1em' }}>
         <button onClick={nextBatch}>Show More ⟳</button>
         <button onClick={() => {
-	  const shownTitles = currentBatch.map(c => c.title);
-	    const accepted = shownTitles.filter(title => !rejected.includes(title));
-	    onNext(rejected, accepted);
-	}}>Next ➡</button>
+          const shownTitles = shownCuisines.map(c => c.title);
+          const accepted = shownTitles.filter(title => !rejected.includes(title));
+          onNext(rejected, accepted);
+        }}>Next ➡</button>
       </div>
     </div>
   );
