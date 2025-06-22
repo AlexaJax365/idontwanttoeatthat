@@ -61,7 +61,7 @@ export default function MealSuggestions({ rejectedCuisines = [], mealType = "" }
 
   return (
     <div className="meal-suggestion-grid">
-      <h2>Here are some {mealType === "takeout" ? "takeout" : "restaurant-style"} ideas near you:</h2>
+      <h2>Here are some {mealType === "takeout" ? "eat out" : "restaurant-style"} ideas near you:</h2>
 
       {loading ? (
         <p>Loading...</p>

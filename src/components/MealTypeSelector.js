@@ -11,7 +11,7 @@ export default function MealTypeSelector({ onSelect }) {
       <h2>Do you want to eat something home-cooked or order takeout?</h2>
       <div className="button-row">
         <button onClick={() => handleClick("home")}>🍳 Home-Cooked</button>
-        <button onClick={() => handleClick("takeout")}>🍔 Takeout</button>
+        <button onClick={() => handleClick("takeout")}>🍔 Eat Out</button>
       </div>
     </div>
   );
