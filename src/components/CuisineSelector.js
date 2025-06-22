@@ -1,44 +1,45 @@
-import React, { useState } from 'react';
-import './CuisineSelector.css';
-
-const cuisineOptions = [
-  "Italian", "Chinese", "Mexican", "Japanese",
-  "Korean", "Indian", "American", "Thai", "Greek", 
-  "French", "MiddleEastern", "Vietnamese", "Mediterranean", "Filipino"
-];
+import React, { useEffect, useState } from 'react';
 
 export default function CuisineSelector({ onNext }) {
+  const [cuisines, setCuisines] = useState([]);
   const [rejected, setRejected] = useState([]);
 
-  const toggleCuisine = (cuisine) => {
+  useEffect(() => {
+    fetch("/api/yelpCategories")
+      .then(res => res.json())
+      .then(data => {
+        const unique = Array.from(new Set(data.map(c => c.title)));
+        setCuisines(unique.sort());
+      })
+      .catch(err => {
+        console.error("Failed to load categories", err);
+        setCuisines([]);
+      });
+  }, []);
+
+  const toggleReject = (cuisine) => {
     setRejected(prev =>
       prev.includes(cuisine)
-        ? prev.filter(c => c !== cuisine)
+        ? prev.filter(item => item !== cuisine)
         : [...prev, cuisine]
     );
   };
 
-  const handleNext = () => {
-    console.log("Rejected Cuisines:", rejected);
-    alert("Rejected: " + rejected.join(', '));
-    onNext(rejected); // move to the next step
-  };
-
   return (
     <div>
-      <h2>What don’t you want to eat?</h2>
-      <div className="cuisine-grid">
-        {cuisineOptions.map(cuisine => (
+      <h2>Tap the cuisines you DON’T want:</h2>
+      <div className="grid">
+        {cuisines.map((cuisine, idx) => (
           <button
-            key={cuisine}
-            className={rejected.includes(cuisine) ? 'selected' : ''}
-            onClick={() => toggleCuisine(cuisine)}
+            key={idx}
+            className={rejected.includes(cuisine) ? "rejected" : ""}
+            onClick={() => toggleReject(cuisine)}
           >
             {cuisine}
           </button>
         ))}
       </div>
-      <button onClick={handleNext}>Next</button>
+      <button onClick={() => onNext(rejected)}>Next ➡</button>
     </div>
   );
 }
