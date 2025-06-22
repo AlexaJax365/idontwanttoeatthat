@@ -14,20 +14,22 @@ function App() {
     <div>
       <h1>I Don’t Want to Eat That</h1>
 
+      {/* Step 1: Meal Type Selection */}
       {step === 1 && (
-        <CuisineSelector
-          onNext={(rejected) => {
-            setRejectedCuisines(rejected);
+        <MealTypeSelector
+          onSelect={(type) => {
+            setMealType(type.toLowerCase());
             setStep(2);
           }}
         />
       )}
 
+      {/* Step 2: Cuisine Selector */}
       {step === 2 && (
         <div>
-          <MealTypeSelector
-            onSelect={(type) => {
-              setMealType(type.toLowerCase());
+          <CuisineSelector
+            onNext={(rejected) => {
+              setRejectedCuisines(rejected);
               setStep(3);
             }}
           />
@@ -35,6 +37,7 @@ function App() {
         </div>
       )}
 
+      {/* Step 3: Meal Suggestions */}
       {step === 3 && (
         <div>
           <MealSuggestions
