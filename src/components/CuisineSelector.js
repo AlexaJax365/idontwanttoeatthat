@@ -45,14 +45,17 @@ export default function CuisineSelector({ onNext }) {
     );
   };
 
-  const nextBatch = () => {
-    const nextIndex = batchIndex + 1;
-    if (nextIndex * batchSize >= cuisines.length) {
-      alert("No more cuisines left to show.");
-    } else {
-      setBatchIndex(nextIndex);
-    }
-  };
+const nextBatch = () => {
+  const currentTitles = currentBatch.map(c => c.title);
+  setRejected(prev => [...prev, ...currentTitles.filter(title => !prev.includes(title))]);
+
+  const nextIndex = batchIndex + 1;
+  if (nextIndex * batchSize >= cuisines.length) {
+    alert("No more cuisines left to show.");
+  } else {
+    setBatchIndex(nextIndex);
+  }
+};
 
   // 🔥 All cuisines shown up to this point
   const shownCuisines = cuisines.slice(0, (batchIndex + 1) * batchSize);
@@ -73,7 +76,7 @@ export default function CuisineSelector({ onNext }) {
         ))}
       </div>
       <div style={{ marginTop: '1em' }}>
-        <button onClick={nextBatch}>Show More ⟳</button>
+        <button onClick={nextBatch}>I don’t like any of these ⟳</button>
         <button onClick={() => {
           const shownTitles = shownCuisines.map(c => c.title);
           const accepted = shownTitles.filter(title => !rejected.includes(title));
