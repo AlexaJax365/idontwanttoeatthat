@@ -3,36 +3,31 @@ import './MealSuggestions.css';
 
 export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisines = [], mealType = "" }) {
   const [meals, setMeals] = useState([]);
-  const [liked, setLiked] = useState([]);
-  const [rejected, setRejected] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [radius, setRadius] = useState(16000); // initial ~10 miles
 
   useEffect(() => {
-    function fetchMealsWithRetry(lat, lon, radius = 1000) {
-      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=20&radius=${radius}&accepted=${acceptedCuisines.join(',')}`;
+    function fetchMeals(lat, lon, searchRadius = radius) {
+      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=40&radius=${searchRadius}&accepted=${acceptedCuisines.join(',')}`;
       
       fetch(query)
         .then(res => res.json())
         .then(data => {
-          const filtered = data.filter(business => {
+          let businesses = data.businesses || data; // depends on your API response format
+          const filtered = businesses.filter(business => {
             const categories = business.categories.map(cat => cat.title.toLowerCase());
-
             const isRejected = rejectedCuisines.some(rej =>
               categories.includes(rej.toLowerCase())
             );
-
             const isAccepted = acceptedCuisines.some(acc =>
               categories.includes(acc.toLowerCase())
             );
-
-            if (mealType === "home") return false;
-
             return isAccepted && !isRejected;
           });
 
-          if (filtered.length === 0 && radius < 40000) {
-            console.log(`🔁 No results at ${radius}m, retrying with larger radius...`);
-            fetchMealsWithRetry(lat, lon, radius + 3000);
+          if (filtered.length === 0 && searchRadius < 80000) {
+            console.log(`🔁 Expanding search radius to ${searchRadius + 8000} meters...`);
+            setRadius(searchRadius + 8000);
           } else {
             setMeals(filtered);
             setLoading(false);
@@ -48,19 +43,26 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
       setLoading(true);
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const { latitude, longitude } = position.coords;
-          fetchMealsWithRetry(latitude, longitude);
+          fetchMeals(position.coords.latitude, position.coords.longitude);
         },
         () => {
-          console.warn("Location access denied. Using default location.");
-          fetchMealsWithRetry(40.7128, -74.0060); // NYC fallback
+          console.warn("Location denied. Using NYC as fallback.");
+          fetchMeals(40.7128, -74.0060);
         }
       );
     } else {
-      console.warn("Geolocation not supported.");
-      fetchMealsWithRetry(40.7128, -74.0060);
+      console.warn("Geolocation not supported. Using NYC as fallback.");
+      fetchMeals(40.7128, -74.0060);
     }
-  }, [rejectedCuisines, acceptedCuisines, mealType]);
+  }, [rejectedCuisines, acceptedCuisines, mealType, radius]);
+
+  const handleNope = (idx) => {
+    setMeals(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSoundsGood = (url) => {
+    window.open(url, '_blank');
+  };
 
   return (
     <div className="meal-suggestion-grid">
@@ -78,8 +80,8 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
               <h3>{meal.name}</h3>
               <p>{meal.location?.address1 || "Location not available"}</p>
               <div className="buttons">
-                <button onClick={() => setRejected(prev => [...prev, meal])}>Nope</button>
-                <button onClick={() => setLiked(prev => [...prev, meal])}>Sounds Good</button>
+                <button onClick={() => handleNope(index)}>Nope</button>
+                <button onClick={() => handleSoundsGood(meal.url)}>Sounds Good</button>
               </div>
             </div>
           ))}
