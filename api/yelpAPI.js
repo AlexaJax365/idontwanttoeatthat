@@ -13,53 +13,50 @@ export default async function handler(req, res) {
     latitude,
     longitude,
     location = "New York",
+    categories = "",
     limit = 40,
     accepted = "",
   } = req.query;
 
-  const params = {
+  const baseParams = {
     term,
     limit: Number(limit),
     sort_by: "distance",
   };
 
   if (latitude && longitude) {
-    params.latitude = parseFloat(latitude);
-    params.longitude = parseFloat(longitude);
-    params.radius = 16000; // ~10 miles
+    baseParams.latitude = parseFloat(latitude);
+    baseParams.longitude = parseFloat(longitude);
   } else {
-    params.location = location;
+    baseParams.location = location;
   }
 
-  // Handle accepted cuisines using raw Yelp aliases (dynamic, not mapped)
+  // Sanitize accepted cuisines
   if (accepted) {
     const acceptedList = accepted.split(',').map(a => a.trim().toLowerCase());
-    params.categories = acceptedList.join(",");
+    baseParams.categories = acceptedList.join(",");
   }
 
+  const radiusSteps = [8000, 16000, 24000, 32000]; // gradually increasing search radius in meters
+
   try {
-    const response = await axios.get("https://api.yelp.com/v3/businesses/search", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      params,
-    });
-
-    const businesses = response.data.businesses || [];
-
-    if (businesses.length === 0 && params.radius < 32000) {
-      // Retry with wider radius if no results and we're still under a max cap
-      params.radius = 32000; // Expand to ~20 miles
-      const retryResponse = await axios.get("https://api.yelp.com/v3/businesses/search", {
+    for (const radius of radiusSteps) {
+      const params = { ...baseParams, radius };
+      const response = await axios.get("https://api.yelp.com/v3/businesses/search", {
         headers: {
           Authorization: `Bearer ${apiKey}`,
         },
         params,
       });
-      return res.status(200).json(retryResponse.data.businesses);
+
+      const businesses = response.data.businesses || [];
+      if (businesses.length > 0) {
+        return res.status(200).json(businesses);
+      }
     }
 
-    res.status(200).json(businesses);
+    // No results even at max radius
+    return res.status(200).json([]);
   } catch (error) {
     const status = error.response?.status || 500;
     const rawData = error.response?.data;
