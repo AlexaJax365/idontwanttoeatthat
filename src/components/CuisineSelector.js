@@ -13,14 +13,15 @@ export default function CuisineSelector({ onNext }) {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const { latitude, longitude } = position.coords;
-          setLocation({ lat: latitude, lon: longitude });
+          setLocation({ lat: position.coords.latitude, lon: position.coords.longitude });
         },
         () => {
-          setLocation({ lat: 40.7128, lon: -74.0060 }); // fallback to NYC
+          console.warn("Geolocation denied. Using NYC as fallback.");
+          setLocation({ lat: 40.7128, lon: -74.0060 });
         }
       );
     } else {
+      console.warn("Geolocation not supported. Using NYC as fallback.");
       setLocation({ lat: 40.7128, lon: -74.0060 });
     }
   }, []);

@@ -35,28 +35,24 @@ export default async function handler(req, res) {
 
     const businesses = response.data.businesses || [];
 
-    // Build dynamic category frequency map
-    const categoryCounts = {};
+    const dynamicNoiseExact = [
+      "food", "bars", "desserts", "cafes", "bakeries", "coffee", "tea"
+    ];
+
+    // Collect unique category titles
+    const categorySet = new Set();
+
     businesses.forEach(biz => {
       biz.categories.forEach(cat => {
         const title = cat.title.trim();
-        const key = title.toLowerCase();
-        if (!categoryCounts[key]) {
-          categoryCounts[key] = { title, count: 0 };
+        const lower = title.toLowerCase();
+        if (!dynamicNoiseExact.includes(lower)) {
+          categorySet.add(title);
         }
-        categoryCounts[key].count += 1;
       });
     });
 
-    // Filter out overly generic or noisy categories dynamically
-    const dynamicNoise = ["food", "restaurant", "dining", "bars", "desserts", "cafes", "bakeries"];
-    const filtered = Object.values(categoryCounts)
-      .filter(catObj => {
-        return !dynamicNoise.some(noise => catObj.title.toLowerCase().includes(noise));
-      })
-      .sort((a, b) => b.count - a.count);
-
-    res.status(200).json(filtered.map(c => c.title));
+    res.status(200).json(Array.from(categorySet));
   } catch (error) {
     const status = error.response?.status || 500;
     const rawData = error.response?.data;
