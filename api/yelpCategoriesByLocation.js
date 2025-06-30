@@ -34,23 +34,25 @@ export default async function handler(req, res) {
     });
 
     const businesses = response.data.businesses || [];
-
-    const dynamicNoiseExact = [
-      "food", "bars", "desserts", "cafes", "bakeries", "coffee", "tea"
-    ];
-
-    // Collect unique category titles
     const categorySet = new Set();
 
     businesses.forEach(biz => {
       biz.categories.forEach(cat => {
         const title = cat.title.trim();
-        const lower = title.toLowerCase();
-        if (!dynamicNoiseExact.includes(lower)) {
+        const parentAliases = cat.parent_aliases || [];
+
+        const isFoodRelated = parentAliases.some(alias =>
+          ["restaurants", "food"].includes(alias)
+        );
+
+        if (isFoodRelated) {
           categorySet.add(title);
         }
       });
     });
+
+    // Debug: log categories extracted before sending
+    console.log("👉 Dynamic food-related categories:", Array.from(categorySet));
 
     res.status(200).json(Array.from(categorySet));
   } catch (error) {
