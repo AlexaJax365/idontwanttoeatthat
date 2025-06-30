@@ -17,7 +17,7 @@ export default function CuisineSelector({ onNext }) {
           setLocation({ lat: latitude, lon: longitude });
         },
         () => {
-          setLocation({ lat: 40.7128, lon: -74.0060 });
+          setLocation({ lat: 40.7128, lon: -74.0060 }); // fallback to NYC
         }
       );
     } else {
@@ -31,7 +31,7 @@ export default function CuisineSelector({ onNext }) {
         .then(res => res.json())
         .then(data => setCuisines(data))
         .catch(err => {
-          console.error("Failed to load categories", err);
+          console.error("Failed to load dynamic categories", err);
           setCuisines([]);
         });
     }
@@ -45,20 +45,21 @@ export default function CuisineSelector({ onNext }) {
     );
   };
 
-const nextBatch = () => {
-  const currentTitles = currentBatch.map(c => c.title);
-  setRejected(prev => [...prev, ...currentTitles.filter(title => !prev.includes(title))]);
+  const nextBatch = () => {
+    const currentTitles = currentBatch;
+    setRejected(prev => [
+      ...prev,
+      ...currentTitles.filter(title => !prev.includes(title))
+    ]);
 
-  const nextIndex = batchIndex + 1;
-  if (nextIndex * batchSize >= cuisines.length) {
-    alert("No more cuisines left to show.");
-  } else {
-    setBatchIndex(nextIndex);
-  }
-};
+    const nextIndex = batchIndex + 1;
+    if (nextIndex * batchSize >= cuisines.length) {
+      alert("No more cuisines left to show.");
+    } else {
+      setBatchIndex(nextIndex);
+    }
+  };
 
-  // 🔥 All cuisines shown up to this point
-  const shownCuisines = cuisines.slice(0, (batchIndex + 1) * batchSize);
   const currentBatch = cuisines.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
 
   return (
@@ -68,18 +69,18 @@ const nextBatch = () => {
         {currentBatch.map((cuisine, idx) => (
           <button
             key={idx}
-            className={rejected.includes(cuisine.title) ? "rejected" : ""}
-            onClick={() => toggleReject(cuisine.title)}
+            className={rejected.includes(cuisine) ? "rejected" : ""}
+            onClick={() => toggleReject(cuisine)}
           >
-            {cuisine.title}
+            {cuisine}
           </button>
         ))}
       </div>
       <div style={{ marginTop: '1em' }}>
         <button onClick={nextBatch}>I don’t like any of these ⟳</button>
         <button onClick={() => {
-          const shownTitles = shownCuisines.map(c => c.title);
-          const accepted = shownTitles.filter(title => !rejected.includes(title));
+          const shown = cuisines.slice(0, (batchIndex + 1) * batchSize);
+          const accepted = shown.filter(title => !rejected.includes(title));
           onNext(rejected, accepted);
         }}>Next ➡</button>
       </div>
