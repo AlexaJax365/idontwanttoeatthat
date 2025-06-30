@@ -1,26 +1,5 @@
-// Serverless function on Vercel to call Yelp API securely
-
+// /api/yelpAPI.js
 const axios = require("axios/dist/node/axios.cjs");
-
-// Map human-friendly cuisine names to Yelp API category codes
-const categoryMap = {
-  Italian: "italian",
-  Japanese: "japanese",
-  Indian: "indpak",
-  Mexican: "mexican",
-  Korean: "korean",
-  Thai: "thai",
-  American: "tradamerican",
-  Vietnamese: "vietnamese",
-  Chinese: "chinese",
-  Mediterranean: "mediterranean",
-  Greek: "greek",
-  French: "french",
-  Spanish: "spanish",
-  Filipino: "filipino",
-  MiddleEastern: "mideastern",
-  FastFood: "hotdogs"
-};
 
 export default async function handler(req, res) {
   const apiKey = process.env.YELP_API_KEY;
@@ -29,44 +8,33 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Missing Yelp API Key" });
   }
 
-  // removed categories = "" code
   const {
-    term = "restaurants",
+    term = "food",
     latitude,
     longitude,
     location = "New York",
-    limit = 10,
-    radius = 1000,
-    rejected = ""
+    limit = 40,
+    accepted = "",
   } = req.query;
 
-  // Determine which categories to include based on rejections
-  const rejectedList = rejected.split(',').map(r => r.trim().toLowerCase());
-  const acceptedList = req.query.accepted?.split(',').map(item => item.trim().toLowerCase()) || [];
-  const allCategories = Object.values(categoryMap);
-  const includedCategories = allCategories.filter(cat => {
-    const name = Object.keys(categoryMap).find(key => categoryMap[key] === cat);
-    return !rejectedList.includes(name.toLowerCase());
-  });
-
-  const categories = includedCategories.join(",");
-
-  // Construct query params
   const params = {
     term,
-    categories,
-    limit
+    limit: Number(limit),
+    sort_by: "distance",
   };
 
-  if (req.query.radius) {
-    params.radius = parseInt(req.query.radius); // optional radius
-  }
-
   if (latitude && longitude) {
-    params.latitude = latitude;
-    params.longitude = longitude;
+    params.latitude = parseFloat(latitude);
+    params.longitude = parseFloat(longitude);
+    params.radius = 16000; // ~10 miles
   } else {
     params.location = location;
+  }
+
+  // Handle accepted cuisines using raw Yelp aliases (dynamic, not mapped)
+  if (accepted) {
+    const acceptedList = accepted.split(',').map(a => a.trim().toLowerCase());
+    params.categories = acceptedList.join(",");
   }
 
   try {
@@ -77,14 +45,21 @@ export default async function handler(req, res) {
       params,
     });
 
-    const acceptedList = req.query.accepted?.split(',').map(item => item.trim().toLowerCase()) || [];
+    const businesses = response.data.businesses || [];
 
-    const filteredBusinesses = response.data.businesses.filter(biz => {
-      const bizCategories = biz.categories.map(c => c.title.toLowerCase());
-      return bizCategories.some(cat => acceptedList.includes(cat));
-    });
+    if (businesses.length === 0 && params.radius < 32000) {
+      // Retry with wider radius if no results and we're still under a max cap
+      params.radius = 32000; // Expand to ~20 miles
+      const retryResponse = await axios.get("https://api.yelp.com/v3/businesses/search", {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        params,
+      });
+      return res.status(200).json(retryResponse.data.businesses);
+    }
 
-    res.status(200).json(response.data.businesses);
+    res.status(200).json(businesses);
   } catch (error) {
     const status = error.response?.status || 500;
     const rawData = error.response?.data;
