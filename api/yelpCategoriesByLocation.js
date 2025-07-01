@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   } = req.query;
 
   const params = {
-    term: "food",
+    term: "restaurants",
     limit: Number(limit),
     sort_by: "distance",
   };
