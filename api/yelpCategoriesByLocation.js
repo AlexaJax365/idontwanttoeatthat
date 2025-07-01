@@ -14,10 +14,10 @@ export default async function handler(req, res) {
     limit = 50,
   } = req.query;
 
+  //Previously included sort_by:"distance"
   const params = {
     term: "restaurants",
     limit: Number(limit),
-    sort_by: "distance",
   };
 
   if (latitude && longitude) {
