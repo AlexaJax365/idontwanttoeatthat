@@ -8,7 +8,7 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
 
   useEffect(() => {
     function fetchMeals(lat, lon, searchRadius = radius) {
-      const query = `/api/yelpAPI?term=food&latitude=${lat}&longitude=${lon}&limit=40&radius=${searchRadius}&accepted=${acceptedCuisines.join(',')}`;
+      const query = `/api/yelpAPI?term=restaurant&latitude=${lat}&longitude=${lon}&limit=40&radius=${searchRadius}&accepted=${acceptedCuisines.join(',')}`;
       
       fetch(query)
         .then(res => res.json())
