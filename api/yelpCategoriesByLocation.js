@@ -35,8 +35,9 @@ export default async function handler(req, res) {
 
     const businesses = response.data.businesses || [];
 
+    //Previously included "bars" as well
     const dynamicNoiseExact = [
-      "food", "bars", "desserts", "cafes", "bakeries", "coffee", "tea"
+      "food", "desserts", "cafes", "bakeries", "coffee", "tea"
     ];
 
     // Collect unique category titles
