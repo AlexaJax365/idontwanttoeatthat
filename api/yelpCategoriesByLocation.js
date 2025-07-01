@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     });
 
     const businesses = response.data.businesses || [];  
-    console.log(`The set of returned businesses includes: `,businesses);
+    //console.log(`The set of returned businesses includes: `,businesses);
 
     //Previously included "bars" as well
     const dynamicNoiseExact = [
@@ -53,6 +53,8 @@ export default async function handler(req, res) {
         }
       });
     });
+
+    console.log(`The set of returned businesses categories: `,categorySet);
 
     res.status(200).json(Array.from(categorySet));
   } catch (error) {
