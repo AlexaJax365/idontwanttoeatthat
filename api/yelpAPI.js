@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   const {
-    term = "food",
+    term = "restaurant",
     latitude,
     longitude,
     location = "New York",
