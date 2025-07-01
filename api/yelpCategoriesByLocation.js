@@ -33,7 +33,8 @@ export default async function handler(req, res) {
       params,
     });
 
-    const businesses = response.data.businesses || [];
+    const businesses = response.data.businesses || [];  
+    console.log(`The set of returned businesses includes: `,businesses);
 
     //Previously included "bars" as well
     const dynamicNoiseExact = [
