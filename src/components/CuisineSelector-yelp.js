@@ -1,4 +1,3 @@
-// src/components/CuisineSelector.js
 import React, { useEffect, useState } from 'react';
 import './CuisineSelector.css';
 
@@ -29,13 +28,9 @@ export default function CuisineSelector({ onNext }) {
 
   useEffect(() => {
     if (location) {
-      // ⬇️ switched from Yelp to Google
-      fetch(`/api/googleCuisinesByLocation?latitude=${location.lat}&longitude=${location.lon}`)
+      fetch(`/api/yelpCategoriesByLocation?latitude=${location.lat}&longitude=${location.lon}`)
         .then(res => res.json())
-        .then(data => {
-          // data is an array of strings like ["Japanese", "Korean", ...]
-          setCuisines(Array.isArray(data) ? data : []);
-        })
+        .then(data => setCuisines(data))
         .catch(err => {
           console.error("Failed to load dynamic categories", err);
           setCuisines([]);
