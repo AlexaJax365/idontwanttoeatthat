@@ -72,8 +72,7 @@ export default function CuisineSelector({ onNext }) {
       }
     }
     loadCuisines();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location]);
+    // eslint-disable-next-line 
 
   const currentBatch = cuisines.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
   const shownSoFar = cuisines.slice(0, (batchIndex + 1) * batchSize);
