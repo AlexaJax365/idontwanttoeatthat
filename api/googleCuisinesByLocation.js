@@ -4,129 +4,161 @@ export default async function handler(req, res) {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) return res.status(500).json({ error: "Missing GOOGLE_MAPS_API_KEY" });
 
-    const { latitude, longitude, location = "New York", radius = 1500, maxPages = 3 } = req.query;
+    const {
+      latitude,
+      longitude,
+      location = "New York",
+      radius = 8000
+    } = req.query;
 
-    let cuisines = [];
-    let usedRadius = Number(radius) || 1500;
+    const attemptsLog = [];
+    let placesCollected = [];
+    let usedRadius = Number(radius) || 8000;
 
+    // --- A) Nearby attempts (8km → 16km → 32km → 50km)
     if (latitude && longitude) {
-      const lat = parseFloat(latitude);
-      const lon = parseFloat(longitude);
-
-      // Expand if we find very few cuisines
-      const radiusSteps = [usedRadius, 4000, 8000, 12000];
-      for (const r of radiusSteps) {
+      for (const r of [8000, 16000, 32000, 50000]) {
         usedRadius = r;
-        const results = await fetchAllNearbyPages({
-          apiKey,
-          location: `${lat},${lon}`,
-          radius: r,
-          type: "restaurant",
-          maxPages: Number(maxPages) || 3,
-        });
+        const url = nearbyUrl(apiKey, latitude, longitude, r);
+        const json = await safeFetchJson(url);
+        attemptsLog.push({ step: `nearby-${r}`, status: json.status, results: json.results?.length || 0, error_message: json.error_message });
+        if (Array.isArray(json.results)) placesCollected.push(...json.results);
 
-        cuisines = extractCuisineLabels(results);
-        if (cuisines.length >= 8) break; // good enough
+        const cuisinesNow = extractCuisines(placesCollected);
+        if (cuisinesNow.length >= 8) {
+          const payload = payloadFrom(placesCollected, cuisinesNow, attemptsLog, usedRadius);
+          res.setHeader("Cache-Control", "public, max-age=60");
+          return res.status(200).json(payload);
+        }
       }
-
-      res.setHeader("Cache-Control", "public, max-age=60");
-      return res.status(200).json({ cuisines, usedRadius });
     }
 
-    // Text Search fallback by city name
-    const textParams = new URLSearchParams({
-      key: apiKey,
-      query: `restaurants in ${location}`,
-    });
-    const resp = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?${textParams}`);
-    const json = await resp.json();
-
-    if (json.status && json.status !== "OK") {
-      console.warn("Places Text Search status:", json.status, json.error_message);
+    // --- B) Text search fallback (city name)
+    {
+      const url = textUrl(apiKey, `restaurants in ${location}`);
+      const json = await safeFetchJson(url);
+      attemptsLog.push({ step: "textsearch", status: json.status, results: json.results?.length || 0, error_message: json.error_message });
+      if (Array.isArray(json.results)) placesCollected.push(...json.results);
     }
 
-    cuisines = extractCuisineLabels(json.results || []);
+    // Build final payload
+    const cuisines = extractCuisines(placesCollected);
+    const payload = payloadFrom(placesCollected, cuisines, attemptsLog, usedRadius);
+
+    // If still empty, DO NOT force curated — return the debug so we can see what's wrong.
     res.setHeader("Cache-Control", "public, max-age=60");
-    return res.status(200).json({ cuisines, usedRadius: null });
+    return res.status(200).json(payload);
   } catch (e) {
     console.error("googleCuisines error:", e);
-    res.status(500).json({ error: "Failed to fetch cuisines" });
+    return res.status(500).json({ error: "Internal error" });
   }
 }
 
-/**
- * Fetch up to N pages from Nearby Search.
- * Google returns ~20 results per page, with next_page_token that becomes valid ~2s later.
- */
-async function fetchAllNearbyPages({ apiKey, location, radius, type = "restaurant", maxPages = 3 }) {
-  const all = [];
-  let pageToken = null;
-
-  for (let i = 0; i < maxPages; i++) {
-    const params = new URLSearchParams({
-      key: apiKey,
-      location,
-      type,
-      radius: String(radius), // using rankby=prominence semantics; radius is allowed
-    });
-
-    if (pageToken) params.set("pagetoken", pageToken);
-
-    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`;
-    const resp = await fetch(url);
-    const json = await resp.json();
-
-    // Log & handle non-OK statuses gracefully
-    if (json.status && json.status !== "OK") {
-      // "INVALID_REQUEST" sometimes means pagetoken not ready yet; back off and retry this iteration
-      if (json.status === "INVALID_REQUEST" && pageToken) {
-        await wait(2000);
-        i--; // retry same page
-        continue;
-      }
-      if (json.status === "OVER_QUERY_LIMIT") {
-        console.warn("Places Nearby OVER_QUERY_LIMIT; backing off.");
-        await wait(1500);
-      } else if (json.status !== "ZERO_RESULTS") {
-        console.warn("Places Nearby status:", json.status, json.error_message);
-      }
-    }
-
-    if (Array.isArray(json.results)) {
-      all.push(...json.results);
-    }
-
-    if (!json.next_page_token) break;
-    pageToken = json.next_page_token;
-
-    // Google says wait ~2s before next_page_token is valid
-    await wait(2000);
-  }
-
-  return all;
+function payloadFrom(placesCollected, cuisines, attempts, usedRadius) {
+  return {
+    cuisines,            // array of strings
+    attempts,            // what each call returned
+    sampleTypes: topTypes(placesCollected), // what types Google actually gave us
+    usedRadius
+  };
 }
 
-function extractCuisineLabels(results) {
-  const set = new Set();
-  for (const place of results) {
-    const types = place?.types || [];
+function nearbyUrl(key, lat, lon, radius) {
+  const p = new URLSearchParams({
+    key,
+    location: `${lat},${lon}`,
+    radius: String(radius),
+    type: "restaurant"
+  });
+  return `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${p}`;
+}
+
+function textUrl(key, query) {
+  const p = new URLSearchParams({ key, query });
+  return `https://maps.googleapis.com/maps/api/place/textsearch/json?${p}`;
+}
+
+async function safeFetchJson(url) {
+  try {
+    const r = await fetch(url, { cache: "no-store" });
+    return await r.json();
+  } catch (e) {
+    return { status: "FETCH_ERROR", results: [] };
+  }
+}
+
+// Extract cuisines dynamically (types + light name hints) with minimal noise filtering
+function extractCuisines(places) {
+  const GENERIC = new Set([
+    "restaurant","food","meal_takeaway","meal_delivery","bar","cafe","bakery",
+    "point_of_interest","establishment","store","supermarket","grocery_or_supermarket",
+    "liquor_store","pharmacy","gas_station","lodging","night_club","shopping_mall",
+    "convenience_store","department_store"
+  ]);
+
+  const out = new Set();
+
+  for (const p of places) {
+    const types = p?.types || [];
+
+    // Types-based
     for (const t of types) {
-      // match "<cuisine>_restaurant"
-      const m = t.match(/^(.+)_restaurant$/);
-      if (m && m[1] && !m[1].includes("meal")) {
-        const pretty = titleCase(m[1].replace(/_/g, " ").trim());
-        if (pretty) set.add(pretty);
+      const type = String(t || "").toLowerCase();
+      if (!type || GENERIC.has(type)) continue;
+      if (type.startsWith("meal_")) continue;
+      if (type.endsWith("_shop") || type.endsWith("_store")) continue;
+
+      let label = type.endsWith("_restaurant") ? type.replace(/_restaurant$/, "") : type;
+      label = label.replace(/_/g, " ").trim();
+      if (label) out.add(titleCase(label));
+    }
+
+    // Name-based hints only if types provide little
+    if ((p?.types?.length || 0) < 2) {
+      for (const h of pickCuisineWordsFromName(String(p?.name || ""))) {
+        out.add(h);
       }
     }
   }
-  // Return a stable, user-friendly list
-  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+  return Array.from(out).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function pickCuisineWordsFromName(name) {
+  const LOWER = name.toLowerCase();
+  const hits = [];
+  const patterns = [
+    { rx: /\bjapanese\b|\bsushi\b|\bramen\b/, label: "Japanese" },
+    { rx: /\bkorean\b/, label: "Korean" },
+    { rx: /\bchinese\b|\bdim sum\b/, label: "Chinese" },
+    { rx: /\bthai\b/, label: "Thai" },
+    { rx: /\bvietnamese\b|\bpho\b|\bbahn? mi\b/, label: "Vietnamese" },
+    { rx: /\bindian\b|\btandoor\b|\bmasala\b/, label: "Indian" },
+    { rx: /\bmexican\b|\btaqueria\b|\btaco\b/, label: "Mexican" },
+    { rx: /\bitalian\b|\bpizza\b|\bpasta\b/, label: "Italian" },
+    { rx: /\bmediterranean\b|\bgreek\b|\bshawarma\b|\bgyro\b/, label: "Mediterranean" },
+    { rx: /\bburger\b/, label: "Burgers" },
+    { rx: /\bamerican\b/, label: "American" }
+  ];
+  for (const { rx, label } of patterns) {
+    if (LOWER.match(rx)) hits.push(label);
+  }
+  return Array.from(new Set(hits));
+}
+
+function topTypes(places) {
+  const counts = {};
+  for (const p of places) {
+    for (const t of (p?.types || [])) {
+      counts[t] = (counts[t] || 0) + 1;
+    }
+  }
+  return Object.entries(counts)
+    .sort((a,b) => b[1]-a[1])
+    .slice(0,30)
+    .map(([type,count]) => ({ type, count }));
 }
 
 function titleCase(s) {
   return s.replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
