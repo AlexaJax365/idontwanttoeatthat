@@ -46,9 +46,10 @@ export default function CuisineSelector({ onNext }) {
         const url = `/api/googleCuisinesByLocation?latitude=${location.lat}&longitude=${location.lon}&radius=${radius}`;
         if (DEBUG) console.log("⚡ fetching cuisines:", url);
 
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+	const res = await fetch(`/api/googleCuisinesByLocation?latitude=${location.lat}&longitude ${location.lon}&radius=1500`);
+	const data = await res.json();
+	setCuisines(Array.isArray(data?.cuisines) ? data.cuisines : []);
+
 
         // Ensure an array of unique, non-empty strings; sort for stable order
         const unique = Array.from(
