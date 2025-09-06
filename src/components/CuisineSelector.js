@@ -35,7 +35,7 @@ function CuisineSelector({ onNext }) {
 
   // Helper: call the API in FAST mode with a client timeout
   async function fetchCuisinesFast({ lat, lon, radius }) {
-    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&radius=${radius}&mode=fast`;
+    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&radius=${radius}&minLabels=8&mode=fast`;
     if (DEBUG) console.log("⚡ fetch:", url);
 
     const controller = new AbortController();
@@ -46,8 +46,13 @@ function CuisineSelector({ onNext }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // Server returns a plain array; accept both just in case
-      const list = Array.isArray(data) ? data : Array.isArray(data?.cuisines) ? data.cuisines : [];
+      // Accept either plain array or { cuisines: [...] }
+      const list = Array.isArray(data)
+        ? data
+        : (data && typeof data === 'object' && Array.isArray(data.cuisines))
+          ? data.cuisines
+          : [];
+
       // Dedupe + clean + sort
       const unique = Array.from(new Set(list.map(x => String(x).trim()).filter(Boolean)))
         .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
@@ -87,7 +92,7 @@ function CuisineSelector({ onNext }) {
           const got = await fetchCuisinesFast({ lat: location.lat, lon: location.lon, radius: a.radius });
           if (DEBUG) console.log(`📍 radius ${a.radius} → ${got.length} cuisines`);
           found = got;
-          if (found.length >= 8) break; // good enough threshold
+          if (found.length >= 8) break; // “good enough” threshold
         }
 
         if (cancelled) return;
@@ -109,7 +114,6 @@ function CuisineSelector({ onNext }) {
   }, [location]); // keep deps minimal to avoid loops
 
   const currentBatch = cuisines.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
-  const shownSoFar = cuisines.slice(0, (batchIndex + 1) * batchSize);
 
   const toggleReject = (cuisine) => {
     setRejected(prev =>
@@ -186,11 +190,17 @@ function CuisineSelector({ onNext }) {
         ))}
       </div>
 
+      {/* Optional UX counters */}
+      <p style={{ marginTop: 4 }}>
+        Selected: {rejected.length} • Showing {currentBatch.length} of {cuisines.length}
+      </p>
+
       <div style={{ marginTop: '1em', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <button onClick={nextBatch} type="button">I don’t like any of these ⟳</button>
         <button
           onClick={() => {
-            const accepted = shownSoFar.filter(title => !rejected.includes(title));
+            // Accept only from the CURRENT batch (stricter, clearer)
+            const accepted = currentBatch.filter(title => !rejected.includes(title));
             if (DEBUG) {
               console.log("🚦 rejected:", rejected);
               console.log("🚦 accepted:", accepted);
