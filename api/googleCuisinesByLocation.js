@@ -15,9 +15,9 @@ export default async function handler(req, res) {
     let placesCollected = [];
     let usedRadius = Number(radius) || 8000;
 
-    // --- A) Nearby attempts (8km → 16km → 32km → 50km)
+    // --- Nearby attempts (8km → 16km → 32km)
     if (latitude && longitude) {
-      for (const r of [8000, 16000, 32000, 50000]) {
+      for (const r of [8000, 16000, 32000]) {
         usedRadius = r;
         const url = nearbyUrl(apiKey, latitude, longitude, r);
         const json = await safeFetchJson(url);
@@ -26,41 +26,35 @@ export default async function handler(req, res) {
 
         const cuisinesNow = extractCuisines(placesCollected);
         if (cuisinesNow.length >= 8) {
-          const payload = payloadFrom(placesCollected, cuisinesNow, attemptsLog, usedRadius);
-          res.setHeader("Cache-Control", "public, max-age=60");
-          return res.status(200).json(payload);
+          return sendPayload(res, placesCollected, cuisinesNow, attemptsLog, usedRadius);
         }
       }
     }
 
-    // --- B) Text search fallback (city name)
+    // --- Text search fallback (force restaurant type)
     {
-      const url = textUrl(apiKey, `restaurants in ${location}`);
+      const url = textUrl(apiKey, `restaurants in ${location}`, /*typeRestaurant*/ true);
       const json = await safeFetchJson(url);
       attemptsLog.push({ step: "textsearch", status: json.status, results: json.results?.length || 0, error_message: json.error_message });
       if (Array.isArray(json.results)) placesCollected.push(...json.results);
     }
 
-    // Build final payload
     const cuisines = extractCuisines(placesCollected);
-    const payload = payloadFrom(placesCollected, cuisines, attemptsLog, usedRadius);
-
-    // If still empty, DO NOT force curated — return the debug so we can see what's wrong.
-    res.setHeader("Cache-Control", "public, max-age=60");
-    return res.status(200).json(payload);
+    return sendPayload(res, placesCollected, cuisines, attemptsLog, usedRadius);
   } catch (e) {
     console.error("googleCuisines error:", e);
     return res.status(500).json({ error: "Internal error" });
   }
 }
 
-function payloadFrom(placesCollected, cuisines, attempts, usedRadius) {
-  return {
-    cuisines,            // array of strings
-    attempts,            // what each call returned
-    sampleTypes: topTypes(placesCollected), // what types Google actually gave us
+function sendPayload(res, placesCollected, cuisines, attempts, usedRadius) {
+  res.setHeader("Cache-Control", "public, max-age=60");
+  return res.status(200).json({
+    cuisines,                 // dynamic array of cuisine labels
+    attempts,                 // what Google returned at each step
+    sampleTypes: topTypes(placesCollected), // top raw Google types (for debugging)
     usedRadius
-  };
+  });
 }
 
 function nearbyUrl(key, lat, lon, radius) {
@@ -68,13 +62,14 @@ function nearbyUrl(key, lat, lon, radius) {
     key,
     location: `${lat},${lon}`,
     radius: String(radius),
-    type: "restaurant"
+    type: "restaurant"           // constrain to restaurants
   });
   return `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${p}`;
 }
 
-function textUrl(key, query) {
+function textUrl(key, query, typeRestaurant = false) {
   const p = new URLSearchParams({ key, query });
+  if (typeRestaurant) p.set("type", "restaurant");  // keep results food-focused
   return `https://maps.googleapis.com/maps/api/place/textsearch/json?${p}`;
 }
 
@@ -82,42 +77,48 @@ async function safeFetchJson(url) {
   try {
     const r = await fetch(url, { cache: "no-store" });
     return await r.json();
-  } catch (e) {
+  } catch {
     return { status: "FETCH_ERROR", results: [] };
   }
 }
 
-// Extract cuisines dynamically (types + light name hints) with minimal noise filtering
+// Only extract cuisines from places that are actually restaurants
 function extractCuisines(places) {
   const GENERIC = new Set([
-    "restaurant","food","meal_takeaway","meal_delivery","bar","cafe","bakery",
-    "point_of_interest","establishment","store","supermarket","grocery_or_supermarket",
-    "liquor_store","pharmacy","gas_station","lodging","night_club","shopping_mall",
-    "convenience_store","department_store"
+    // global generics
+    "restaurant","food","meal_takeaway","meal_delivery",
+    "point_of_interest","establishment",
+    // non-food venues / services we want to exclude
+    "bowling_alley","car_wash","car_repair","car_dealer","car_rental","parking",
+    "gym","spa","health","doctor","hospital","physiotherapist","pharmacy","dentist",
+    "beauty_salon","hair_care",
+    "store","supermarket","grocery_or_supermarket","convenience_store","department_store",
+    "shopping_mall","clothing_store","shoe_store","jewelry_store","book_store",
+    "electronics_store","home_goods_store","furniture_store","hardware_store",
+    "laundry","bank","atm","post_office","police","school","university","library",
+    "lodging","night_club","movie_theater","museum","zoo","park","stadium"
   ]);
 
   const out = new Set();
 
   for (const p of places) {
-    const types = p?.types || [];
+    const types = (p?.types || []).map(t => String(t || "").toLowerCase());
+    if (!types.includes("restaurant")) continue; // 🚫 ignore non-restaurant POIs entirely
 
-    // Types-based
-    for (const t of types) {
-      const type = String(t || "").toLowerCase();
-      if (!type || GENERIC.has(type)) continue;
-      if (type.startsWith("meal_")) continue;
-      if (type.endsWith("_shop") || type.endsWith("_store")) continue;
+    // Types-based dynamic labels
+    for (const tRaw of types) {
+      if (!tRaw || GENERIC.has(tRaw)) continue;
+      if (tRaw.startsWith("meal_")) continue;
+      if (tRaw.endsWith("_shop") || tRaw.endsWith("_store")) continue;
 
-      let label = type.endsWith("_restaurant") ? type.replace(/_restaurant$/, "") : type;
+      let label = tRaw.endsWith("_restaurant") ? tRaw.replace(/_restaurant$/, "") : tRaw;
       label = label.replace(/_/g, " ").trim();
       if (label) out.add(titleCase(label));
     }
 
-    // Name-based hints only if types provide little
-    if ((p?.types?.length || 0) < 2) {
-      for (const h of pickCuisineWordsFromName(String(p?.name || ""))) {
-        out.add(h);
-      }
+    // Light name hints only if types were sparse
+    if (types.length < 2 && p?.name) {
+      for (const h of pickCuisineWordsFromName(String(p.name))) out.add(h);
     }
   }
 
@@ -125,7 +126,7 @@ function extractCuisines(places) {
 }
 
 function pickCuisineWordsFromName(name) {
-  const LOWER = name.toLowerCase();
+  const lower = name.toLowerCase();
   const hits = [];
   const patterns = [
     { rx: /\bjapanese\b|\bsushi\b|\bramen\b/, label: "Japanese" },
@@ -140,9 +141,7 @@ function pickCuisineWordsFromName(name) {
     { rx: /\bburger\b/, label: "Burgers" },
     { rx: /\bamerican\b/, label: "American" }
   ];
-  for (const { rx, label } of patterns) {
-    if (LOWER.match(rx)) hits.push(label);
-  }
+  for (const { rx, label } of patterns) if (lower.match(rx)) hits.push(label);
   return Array.from(new Set(hits));
 }
 
