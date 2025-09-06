@@ -4,18 +4,13 @@ export default async function handler(req, res) {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) return res.status(500).json({ error: "Missing GOOGLE_MAPS_API_KEY" });
 
-    const {
-      latitude,
-      longitude,
-      location = "New York",
-      radius = 8000
-    } = req.query;
+    const { latitude, longitude, location = "New York", radius = 8000 } = req.query;
 
     const attemptsLog = [];
     let placesCollected = [];
     let usedRadius = Number(radius) || 8000;
 
-    // --- Nearby attempts (8km → 16km → 32km)
+    // A) Nearby attempts (8km → 16km → 32km)
     if (latitude && longitude) {
       for (const r of [8000, 16000, 32000]) {
         usedRadius = r;
@@ -24,22 +19,20 @@ export default async function handler(req, res) {
         attemptsLog.push({ step: `nearby-${r}`, status: json.status, results: json.results?.length || 0, error_message: json.error_message });
         if (Array.isArray(json.results)) placesCollected.push(...json.results);
 
-        const cuisinesNow = extractCuisines(placesCollected);
-        if (cuisinesNow.length >= 8) {
-          return sendPayload(res, placesCollected, cuisinesNow, attemptsLog, usedRadius);
-        }
+        const cuisinesNow = extractCuisinesDynamic(placesCollected);
+        if (cuisinesNow.length >= 8) return sendPayload(res, placesCollected, cuisinesNow, attemptsLog, usedRadius);
       }
     }
 
-    // --- Text search fallback (force restaurant type)
+    // B) Text search fallback (force restaurant type via query)
     {
-      const url = textUrl(apiKey, `restaurants in ${location}`, /*typeRestaurant*/ true);
+      const url = textUrl(apiKey, `restaurants in ${location}`);
       const json = await safeFetchJson(url);
       attemptsLog.push({ step: "textsearch", status: json.status, results: json.results?.length || 0, error_message: json.error_message });
       if (Array.isArray(json.results)) placesCollected.push(...json.results);
     }
 
-    const cuisines = extractCuisines(placesCollected);
+    const cuisines = extractCuisinesDynamic(placesCollected);
     return sendPayload(res, placesCollected, cuisines, attemptsLog, usedRadius);
   } catch (e) {
     console.error("googleCuisines error:", e);
@@ -50,9 +43,9 @@ export default async function handler(req, res) {
 function sendPayload(res, placesCollected, cuisines, attempts, usedRadius) {
   res.setHeader("Cache-Control", "public, max-age=60");
   return res.status(200).json({
-    cuisines,                 // dynamic array of cuisine labels
-    attempts,                 // what Google returned at each step
-    sampleTypes: topTypes(placesCollected), // top raw Google types (for debugging)
+    cuisines,                    // dynamic array of cuisine labels
+    attempts,                    // what each Google call returned
+    sampleTypes: topTypes(placesCollected), // top raw Google types
     usedRadius
   });
 }
@@ -62,14 +55,13 @@ function nearbyUrl(key, lat, lon, radius) {
     key,
     location: `${lat},${lon}`,
     radius: String(radius),
-    type: "restaurant"           // constrain to restaurants
+    type: "restaurant" // constrain to restaurants
   });
   return `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${p}`;
 }
 
-function textUrl(key, query, typeRestaurant = false) {
-  const p = new URLSearchParams({ key, query });
-  if (typeRestaurant) p.set("type", "restaurant");  // keep results food-focused
+function textUrl(key, query) {
+  const p = new URLSearchParams({ key, query, type: "restaurant" });
   return `https://maps.googleapis.com/maps/api/place/textsearch/json?${p}`;
 }
 
@@ -82,82 +74,85 @@ async function safeFetchJson(url) {
   }
 }
 
-// Only extract cuisines from places that are actually restaurants
-function extractCuisines(places) {
+/**
+ * Dynamic extraction:
+ *  1) Only consider places that include type "restaurant".
+ *  2) Read Google "types" (when they include cuisine-ish tokens).
+ *  3) Also infer cuisine from name keywords (small, necessary mapping).
+ */
+function extractCuisinesDynamic(places) {
   const GENERIC = new Set([
-    // global generics
     "restaurant","food","meal_takeaway","meal_delivery",
-    "point_of_interest","establishment",
-    // non-food venues / services we want to exclude
-    "bowling_alley","car_wash","car_repair","car_dealer","car_rental","parking",
-    "gym","spa","health","doctor","hospital","physiotherapist","pharmacy","dentist",
-    "beauty_salon","hair_care",
-    "store","supermarket","grocery_or_supermarket","convenience_store","department_store",
-    "shopping_mall","clothing_store","shoe_store","jewelry_store","book_store",
-    "electronics_store","home_goods_store","furniture_store","hardware_store",
-    "laundry","bank","atm","post_office","police","school","university","library",
-    "lodging","night_club","movie_theater","museum","zoo","park","stadium"
+    "point_of_interest","establishment","store",
+    "bar","cafe","bakery","lodging","night_club",
+    "gym","health","spa","grocery_or_supermarket"
   ]);
+
+  // Minimal keyword→cuisine mapping (disclosed necessity due to missing Google cuisine types)
+  const KEYWORDS = [
+    // Japanese
+    { rx: /\bjapanese\b|\bsushi\b|\bramen\b|\bizakaya\b|\byakitori\b|\budon\b|\bsoba\b/i, label: "Japanese" },
+    // Korean
+    { rx: /\bkorean\b|\bbulgogi\b|\bbibimbap\b|\bkbbq\b/i, label: "Korean" },
+    // Chinese
+    { rx: /\bchinese\b|\bdim sum\b|\bsichuan\b|\bhunan\b|\bcantonese\b|\bhot pot\b/i, label: "Chinese" },
+    // Thai
+    { rx: /\bthai\b|\bpad thai\b|\btom( )?yum\b|\bgreen curry\b/i, label: "Thai" },
+    // Vietnamese
+    { rx: /\bvietnamese\b|\bpho\b|\bbanh? mi\b|\bbun\b/i, label: "Vietnamese" },
+    // Indian
+    { rx: /\bindian\b|\bbiryani\b|\bdosa\b|\btandoor/i, label: "Indian" },
+    // Italian
+    { rx: /\bitalian\b|\bpizza\b|\bpasta\b|\btrattoria\b|\bosteria\b/i, label: "Italian" },
+    // Mexican
+    { rx: /\bmexican\b|\btaqueria\b|\btaco\b|\bal pastor\b|\bbirria\b/i, label: "Mexican" },
+    // Mediterranean / Middle Eastern
+    { rx: /\bmediterranean\b|\bgreek\b|\bgyro\b|\bshawarma\b|\bkebab\b|\bfalafel\b|\bturkish\b|\blebanese\b/i, label: "Mediterranean" },
+    // American/Burgers/BBQ
+    { rx: /\bamerican\b|\bburger\b|\bdiner\b|\bbbq\b|\bsmokehouse\b/i, label: "American" },
+    // Others (add lightweight signals)
+    { rx: /\bethiopian\b|\binjera\b/i, label: "Ethiopian" },
+    { rx: /\blebanese\b|\bmezze\b/i, label: "Lebanese" },
+    { rx: /\bperuvian\b|\bceviche\b/i, label: "Peruvian" },
+    { rx: /\bjamaican\b|\bjerk\b/i, label: "Jamaican" },
+    { rx: /\bcaribbean\b/i, label: "Caribbean" },
+    { rx: /\bfrench\b|\bbistro\b/i, label: "French" },
+    { rx: /\bspanish\b|\btapas\b/i, label: "Spanish" },
+    { rx: /\bgerman\b|\bbratwurst\b/i, label: "German" }
+  ];
 
   const out = new Set();
 
   for (const p of places) {
     const types = (p?.types || []).map(t => String(t || "").toLowerCase());
-    if (!types.includes("restaurant")) continue; // 🚫 ignore non-restaurant POIs entirely
+    if (!types.includes("restaurant")) continue; // only restaurants
 
-    // Types-based dynamic labels
-    for (const tRaw of types) {
-      if (!tRaw || GENERIC.has(tRaw)) continue;
-      if (tRaw.startsWith("meal_")) continue;
-      if (tRaw.endsWith("_shop") || tRaw.endsWith("_store")) continue;
-
-      let label = tRaw.endsWith("_restaurant") ? tRaw.replace(/_restaurant$/, "") : tRaw;
+    // 1) Types-based tokens (rarely present, but keep if non-generic and non-shop/store)
+    for (const t of types) {
+      if (!t || GENERIC.has(t)) continue;
+      if (t.startsWith("meal_")) continue;
+      if (t.endsWith("_shop") || t.endsWith("_store")) continue;
+      let label = t.endsWith("_restaurant") ? t.replace(/_restaurant$/, "") : t;
       label = label.replace(/_/g, " ").trim();
       if (label) out.add(titleCase(label));
     }
 
-    // Light name hints only if types were sparse
-    if (types.length < 2 && p?.name) {
-      for (const h of pickCuisineWordsFromName(String(p.name))) out.add(h);
+    // 2) Name-based hints (needed in many regions; keeps list dynamic to local names)
+    const name = String(p?.name || "");
+    if (name) {
+      for (const { rx, label } of KEYWORDS) {
+        if (rx.test(name)) out.add(label);
+      }
     }
   }
 
   return Array.from(out).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
-function pickCuisineWordsFromName(name) {
-  const lower = name.toLowerCase();
-  const hits = [];
-  const patterns = [
-    { rx: /\bjapanese\b|\bsushi\b|\bramen\b/, label: "Japanese" },
-    { rx: /\bkorean\b/, label: "Korean" },
-    { rx: /\bchinese\b|\bdim sum\b/, label: "Chinese" },
-    { rx: /\bthai\b/, label: "Thai" },
-    { rx: /\bvietnamese\b|\bpho\b|\bbahn? mi\b/, label: "Vietnamese" },
-    { rx: /\bindian\b|\btandoor\b|\bmasala\b/, label: "Indian" },
-    { rx: /\bmexican\b|\btaqueria\b|\btaco\b/, label: "Mexican" },
-    { rx: /\bitalian\b|\bpizza\b|\bpasta\b/, label: "Italian" },
-    { rx: /\bmediterranean\b|\bgreek\b|\bshawarma\b|\bgyro\b/, label: "Mediterranean" },
-    { rx: /\bburger\b/, label: "Burgers" },
-    { rx: /\bamerican\b/, label: "American" }
-  ];
-  for (const { rx, label } of patterns) if (lower.match(rx)) hits.push(label);
-  return Array.from(new Set(hits));
-}
-
 function topTypes(places) {
   const counts = {};
-  for (const p of places) {
-    for (const t of (p?.types || [])) {
-      counts[t] = (counts[t] || 0) + 1;
-    }
-  }
-  return Object.entries(counts)
-    .sort((a,b) => b[1]-a[1])
-    .slice(0,30)
-    .map(([type,count]) => ({ type, count }));
+  for (const p of places) for (const t of (p?.types || [])) counts[t] = (counts[t] || 0) + 1;
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([type,count])=>({ type, count }));
 }
 
-function titleCase(s) {
-  return s.replace(/\b\w/g, c => c.toUpperCase());
-}
+function titleCase(s) { return s.replace(/\b\w/g, c => c.toUpperCase()); }
