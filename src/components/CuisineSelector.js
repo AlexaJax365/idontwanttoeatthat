@@ -35,7 +35,7 @@ function CuisineSelector({ onNext }) {
 
   // Helper: call the API in FAST mode with a client timeout
   async function fetchCuisinesFast({ lat, lon, radius }) {
-    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&radius=${radius}&minLabels=8&mode=fast`;
+    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&radius=${radius}&minLabels=12&mode=fast`;
     if (DEBUG) console.log("⚡ fetch:", url);
 
     const controller = new AbortController();
@@ -66,6 +66,20 @@ function CuisineSelector({ onNext }) {
     }
   }
 
+  // Deep fetch: paginate & wider radii via server
+  async function fetchCuisinesDeep({ lat, lon }) {
+    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&minLabels=16&mode=deep&maxPages=3`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const list = Array.isArray(data)
+      ? data
+      : (data && typeof data === 'object' && Array.isArray(data.cuisines))
+        ? data.cuisines
+        : [];
+    return Array.from(new Set(list.map(s => String(s).trim()).filter(Boolean)))
+      .sort((a,b)=>a.localeCompare(b, undefined, {sensitivity:'base'}));
+  }
+
   // 2) Load cuisines dynamically with quick radius expansion (fast, no pagination)
   useEffect(() => {
     if (!location) return;
@@ -79,7 +93,6 @@ function CuisineSelector({ onNext }) {
         setRejected([]);
         setBatchIndex(0);
 
-        // Start a bit wider to avoid empty lists; expand quickly
         const attempts = [
           { radius: 8000 },   // ~5 mi
           { radius: 16000 },  // ~10 mi
@@ -123,8 +136,8 @@ function CuisineSelector({ onNext }) {
     );
   };
 
-  // “I don’t like any of these” = reject the current batch, then advance
-  const nextBatch = () => {
+  // “I don’t like any of these” = reject the current batch, then advance (and deep-fetch if needed)
+  const nextBatch = async () => {
     if (currentBatch.length) {
       setRejected(prev => [
         ...prev,
@@ -133,14 +146,27 @@ function CuisineSelector({ onNext }) {
     }
     const nextIndex = batchIndex + 1;
     if (nextIndex * batchSize >= cuisines.length) {
-      alert("No more cuisines left to show.");
+      // We ran out. Try a deep fetch to load more cuisines dynamically.
+      try {
+        setLoading(true);
+        const more = await fetchCuisinesDeep({ lat: location.lat, lon: location.lon });
+        if (more.length > cuisines.length) {
+          setCuisines(more);
+          setBatchIndex(nextIndex);
+        } else {
+          alert("No more cuisines left to show.");
+        }
+      } catch {
+        alert("Couldn't find more cuisines right now.");
+      } finally {
+        setLoading(false);
+      }
     } else {
       setBatchIndex(nextIndex);
     }
   };
 
   const retryNow = () => {
-    // Reset state and nudge a rerun
     setCuisines([]);
     setRejected([]);
     setBatchIndex(0);
@@ -190,7 +216,6 @@ function CuisineSelector({ onNext }) {
         ))}
       </div>
 
-      {/* Optional UX counters */}
       <p style={{ marginTop: 4 }}>
         Selected: {rejected.length} • Showing {currentBatch.length} of {cuisines.length}
       </p>
@@ -217,4 +242,5 @@ function CuisineSelector({ onNext }) {
 }
 
 export default CuisineSelector;
+
 
