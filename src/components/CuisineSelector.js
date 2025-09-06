@@ -13,6 +13,7 @@ function CuisineSelector({ onNext }) {
   const batchSize = 10;
   const defaultLoc = { lat: 40.7128, lon: -74.0060 }; // NYC fallback
   const DEBUG = false;
+  const CLIENT_TIMEOUT_MS = 2500; // abort slow fetches quickly
 
   // 1) Get user location (fallback to NYC)
   useEffect(() => {
@@ -32,24 +33,35 @@ function CuisineSelector({ onNext }) {
     }
   }, []);
 
-  // Small helper to call the API with radius + pages
-  async function fetchCuisines({ lat, lon, radius, maxPages }) {
-    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&radius=${radius}&maxPages=${maxPages}`;
+  // Helper: call the API in FAST mode with a client timeout
+  async function fetchCuisinesFast({ lat, lon, radius }) {
+    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&radius=${radius}&mode=fast`;
     if (DEBUG) console.log("⚡ fetch:", url);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
 
-    // Endpoint returns a plain array (per our latest server code)
-    const list = Array.isArray(data) ? data : Array.isArray(data?.cuisines) ? data.cuisines : [];
-    // Dedupe + clean + sort
-    const unique = Array.from(new Set(list.map(x => String(x).trim()).filter(Boolean)))
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
 
-    return unique;
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // Server returns a plain array; accept both just in case
+      const list = Array.isArray(data) ? data : Array.isArray(data?.cuisines) ? data.cuisines : [];
+      // Dedupe + clean + sort
+      const unique = Array.from(new Set(list.map(x => String(x).trim()).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+      return unique;
+    } catch (e) {
+      if (DEBUG) console.warn("Fetch failed/aborted:", e?.message);
+      return [];
+    } finally {
+      clearTimeout(t);
+    }
   }
 
-  // 2) Load cuisines dynamically with retries (radius/pages expansion)
+  // 2) Load cuisines dynamically with quick radius expansion (fast, no pagination)
   useEffect(() => {
     if (!location) return;
 
@@ -62,27 +74,26 @@ function CuisineSelector({ onNext }) {
         setRejected([]);
         setBatchIndex(0);
 
+        // Start a bit wider to avoid empty lists; expand quickly
         const attempts = [
-          { radius: 1500,  maxPages: 2 },  // ~1.5 km
-          { radius: 4000,  maxPages: 3 },  // 4 km
-          { radius: 8000,  maxPages: 3 },  // 8 km
-          { radius: 16000, maxPages: 3 },  // 16 km
-          { radius: 32000, maxPages: 3 },  // 32 km
-          { radius: 50000, maxPages: 3 },  // 50 km
+          { radius: 8000 },   // ~5 mi
+          { radius: 16000 },  // ~10 mi
+          { radius: 32000 },  // ~20 mi
+          { radius: 50000 },  // ~31 mi
         ];
 
-        let all = [];
+        let found = [];
         for (const a of attempts) {
-          const got = await fetchCuisines({ lat: location.lat, lon: location.lon, radius: a.radius, maxPages: a.maxPages });
+          const got = await fetchCuisinesFast({ lat: location.lat, lon: location.lon, radius: a.radius });
           if (DEBUG) console.log(`📍 radius ${a.radius} → ${got.length} cuisines`);
-          all = got;
-          if (all.length >= 8) break; // “good enough” threshold
+          found = got;
+          if (found.length >= 8) break; // good enough threshold
         }
 
         if (cancelled) return;
 
-        setCuisines(all);
-        if (DEBUG) console.log("🍣 final cuisines:", all);
+        setCuisines(found);
+        if (DEBUG) console.log("🍣 final cuisines:", found);
       } catch (err) {
         console.error("Failed to load dynamic categories", err);
         if (!cancelled) {
@@ -125,12 +136,13 @@ function CuisineSelector({ onNext }) {
   };
 
   const retryNow = () => {
-    // Bump a tiny delta in location to force refetch, or just reset state
+    // Reset state and nudge a rerun
     setCuisines([]);
     setRejected([]);
     setBatchIndex(0);
-    // re-run effect by tweaking location object
-    setLocation(loc => ({ ...(loc || defaultLoc) }));
+    setErrMsg("");
+    setLoading(true);
+    setLocation(loc => ({ ...(loc || defaultLoc) })); // triggers effect
   };
 
   return (
@@ -147,8 +159,17 @@ function CuisineSelector({ onNext }) {
 
       {!loading && !errMsg && currentBatch.length === 0 && cuisines.length === 0 && (
         <div>
-          <p>No cuisines found nearby right now. You can try again or continue.</p>
-          <button type="button" onClick={retryNow}>Try again</button>
+          <p>No cuisines found nearby right now.</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={retryNow}>Try again</button>
+            <button
+              type="button"
+              onClick={() => onNext([], [])}
+              title="Continue without picking cuisines"
+            >
+              Continue →
+            </button>
+          </div>
         </div>
       )}
 
@@ -186,3 +207,4 @@ function CuisineSelector({ onNext }) {
 }
 
 export default CuisineSelector;
+
