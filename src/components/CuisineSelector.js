@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import './CuisineSelector.css';
 
-export default function CuisineSelector({ onNext }) {
+function CuisineSelector({ onNext }) {
   const [cuisines, setCuisines] = useState([]);
   const [rejected, setRejected] = useState([]);
   const [batchIndex, setBatchIndex] = useState(0);
@@ -13,10 +13,9 @@ export default function CuisineSelector({ onNext }) {
   const batchSize = 10;
   const defaultLoc = { lat: 40.7128, lon: -74.0060 }; // NYC fallback
   const radius = 1500; // meters (server may expand internally)
-
-  // Toggle to see debug logs in the browser console
   const DEBUG = false;
 
+  // Get user location (fallback to NYC)
   useEffect(() => {
     setLoading(true);
     if (navigator.geolocation) {
@@ -36,22 +35,21 @@ export default function CuisineSelector({ onNext }) {
     }
   }, []);
 
+  // Fetch dynamic cuisines from Google proxy
   useEffect(() => {
     async function loadCuisines() {
       if (!location) return;
       try {
         setLoading(true);
         setErrMsg("");
-
         const url = `/api/googleCuisinesByLocation?latitude=${location.lat}&longitude=${location.lon}&radius=${radius}`;
         if (DEBUG) console.log("⚡ fetching cuisines:", url);
 
-	const res = await fetch(`/api/googleCuisinesByLocation?latitude=${location.lat}&longitude ${location.lon}&radius=1500`);
-	const data = await res.json();
-	setCuisines(Array.isArray(data?.cuisines) ? data.cuisines : []);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
 
-
-        // Ensure an array of unique, non-empty strings; sort for stable order
+        // Expect plain array (server returns []), normalize & sort
         const unique = Array.from(
           new Set(
             (Array.isArray(data) ? data : []).map(x => String(x).trim()).filter(Boolean)
@@ -62,7 +60,7 @@ export default function CuisineSelector({ onNext }) {
 
         setCuisines(unique);
         setBatchIndex(0);
-        setRejected([]); // reset selections when location changes
+        setRejected([]);
       } catch (err) {
         console.error("Failed to load dynamic categories", err);
         setErrMsg("Couldn’t load cuisines near you. Please try again.");
@@ -72,7 +70,7 @@ export default function CuisineSelector({ onNext }) {
       }
     }
     loadCuisines();
-    // eslint-disable-next-line 
+  }, [location]); // keep deps minimal to avoid loops
 
   const currentBatch = cuisines.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
   const shownSoFar = cuisines.slice(0, (batchIndex + 1) * batchSize);
@@ -129,7 +127,6 @@ export default function CuisineSelector({ onNext }) {
         <button onClick={nextBatch} type="button">I don’t like any of these ⟳</button>
         <button
           onClick={() => {
-            // accepted = everything shown so far minus rejected
             const accepted = shownSoFar.filter(title => !rejected.includes(title));
             if (DEBUG) {
               console.log("🚦 rejected:", rejected);
@@ -145,3 +142,5 @@ export default function CuisineSelector({ onNext }) {
     </div>
   );
 }
+
+export default CuisineSelector;
