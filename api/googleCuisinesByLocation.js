@@ -4,7 +4,15 @@ export default async function handler(req, res) {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) return res.status(500).json({ error: "Missing GOOGLE_MAPS_API_KEY" });
 
-    const { latitude, longitude, location = "New York", radius = 8000, minLabels = 8 } = req.query;
+    const {
+      latitude,
+      longitude,
+      location = "New York",
+      radius = 8000,
+      minLabels = 12,              // ask for more variety
+      mode = "fast",               // "fast" (1 page) or "deep" (paginate & more radii)
+      maxPages = 3                 // up to 3 pages per radius in deep mode
+    } = req.query;
 
     const attemptsLog = [];
     let placesCollected = [];
@@ -14,26 +22,32 @@ export default async function handler(req, res) {
     const lon = longitude != null ? parseFloat(longitude) : null;
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
 
-    // Nearby attempts (only if coords are valid)
-    if (hasCoords) {
-      for (const r of [8000, 16000, 32000]) {
-        usedRadius = r;
-        const url = nearbyUrl(apiKey, lat, lon, r);
-        const json = await safeFetchJson(url);
-        attemptsLog.push({ step: `nearby-${r}`, status: json.status, results: json.results?.length || 0, error_message: json.error_message });
+    // Which radii to try (meters)
+    const radii = mode === "deep"
+      ? [8000, 16000, 32000, 50000, 80000]   // deeper & wider
+      : [Number(radius) || 8000, 16000, 32000];
 
-        if (Array.isArray(json.results)) {
-          // keep ONLY restaurants
-          placesCollected.push(...json.results.filter(onlyRestaurants));
-        }
+    // Nearby attempts
+    if (hasCoords) {
+      for (const r of radii) {
+        usedRadius = r;
+        const pageResults = (mode === "deep")
+          ? await fetchNearbyAllPages({ apiKey, lat, lon, radius: r, maxPages: Number(maxPages) })
+          : await fetchNearbyOnePage({ apiKey, lat, lon, radius: r });
+
+        attemptsLog.push({ step: `nearby-${r}`, pages: pageResults.pages, total: pageResults.items.length, status: "OK" });
+        placesCollected.push(...pageResults.items.filter(onlyRestaurants));
+
         const cuisinesNow = extractCuisinesDynamic(placesCollected);
-        if (cuisinesNow.length >= Number(minLabels)) return sendPayload(res, placesCollected, cuisinesNow, attemptsLog, usedRadius);
+        if (cuisinesNow.length >= Number(minLabels)) {
+          return sendPayload(res, placesCollected, cuisinesNow, attemptsLog, usedRadius);
+        }
       }
     } else {
       attemptsLog.push({ step: "nearby-skip", status: "NO_COORDS", results: 0 });
     }
 
-    // Text Search fallback (then hard-filter to restaurants)
+    // Text Search fallback (constrain to restaurants afterward)
     {
       const url = textUrl(apiKey, `restaurants in ${location}`);
       const json = await safeFetchJson(url);
@@ -51,9 +65,7 @@ export default async function handler(req, res) {
 
 function sendPayload(res, placesCollected, cuisines, attempts, usedRadius) {
   res.setHeader("Cache-Control", "public, max-age=60");
-  return res.status(200).json({
-    cuisines, attempts, sampleTypes: topTypes(placesCollected), usedRadius
-  });
+  return res.status(200).json({ cuisines, attempts, sampleTypes: topTypes(placesCollected), usedRadius });
 }
 
 function onlyRestaurants(p) {
@@ -61,37 +73,56 @@ function onlyRestaurants(p) {
   return types.includes("restaurant");
 }
 
-function nearbyUrl(key, lat, lon, radius) {
+function nearbyUrl(key, lat, lon, radius, pageToken) {
   const p = new URLSearchParams({
     key, location: `${lat},${lon}`, radius: String(radius), type: "restaurant"
   });
+  if (pageToken) p.set("pagetoken", pageToken);
   return `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${p}`;
 }
-
 function textUrl(key, query) {
   const p = new URLSearchParams({ key, query, type: "restaurant" });
   return `https://maps.googleapis.com/maps/api/place/textsearch/json?${p}`;
 }
-
 async function safeFetchJson(url) {
   try { const r = await fetch(url, { cache: "no-store" }); return await r.json(); }
   catch { return { status: "FETCH_ERROR", results: [] }; }
 }
 
-/** Types + name/vicinity keywords; final scrub avoids non-food labels */
+async function fetchNearbyOnePage({ apiKey, lat, lon, radius }) {
+  const url = nearbyUrl(apiKey, lat, lon, radius);
+  const json = await safeFetchJson(url);
+  return { pages: 1, items: Array.isArray(json.results) ? json.results : [] };
+}
+async function fetchNearbyAllPages({ apiKey, lat, lon, radius, maxPages = 3 }) {
+  let items = [];
+  let token = null;
+  let pages = 0;
+  for (let i = 0; i < maxPages; i++) {
+    const url = nearbyUrl(apiKey, lat, lon, radius, token);
+    const json = await safeFetchJson(url);
+    pages++;
+    if (Array.isArray(json.results)) items.push(...json.results);
+    if (!json.next_page_token) break;
+    token = json.next_page_token;
+    await wait(2000); // required delay before using next_page_token
+  }
+  return { pages, items };
+}
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/** Dynamic extraction from restaurant places only */
 function extractCuisinesDynamic(places) {
   const GENERIC_TYPES = new Set([
     "restaurant","food","meal_takeaway","meal_delivery","point_of_interest","establishment",
     "store","bar","cafe","bakery","lodging","night_club","gym","health","spa",
     "grocery_or_supermarket","liquor_store"
   ]);
-
-  const NOISE_LABELS = [
+  const NOISE = [
     /alley/i, /wash/i, /car/i, /auto/i, /gas/i, /station/i, /gym/i, /spa/i, /health/i,
     /store/i, /shop/i, /market/i, /mall/i, /salon/i, /beauty/i, /pharmacy/i, /laundry/i,
     /lodging/i, /hotel/i, /motel/i, /night club/i
   ];
-
   const KEYWORDS = [
     { rx: /\bjapanese\b|\bsushi\b|\bramen\b|\bizakaya\b|\byakitori\b|\btempura\b/i, label: "Japanese" },
     { rx: /\bkorean\b|\bbulgogi\b|\bbibimbap\b|\bkbbq\b/i, label: "Korean" },
@@ -119,16 +150,16 @@ function extractCuisinesDynamic(places) {
 
   for (const p of places) {
     const types = (p?.types || []).map(t => String(t || "").toLowerCase());
-    if (!types.includes("restaurant")) continue; // hard gate = no gas/car wash/gyms
+    if (!types.includes("restaurant")) continue;
 
-    // types-based
+    // types-based (keep if not generic/store/shop)
     for (const t of types) {
       if (!t || GENERIC_TYPES.has(t)) continue;
       if (t.startsWith("meal_")) continue;
       if (t.endsWith("_shop") || t.endsWith("_store")) continue;
       let label = t.endsWith("_restaurant") ? t.replace(/_restaurant$/, "") : t;
       label = label.replace(/_/g, " ").trim();
-      if (label && !NOISE_LABELS.some(rx => rx.test(label))) out.add(titleCase(label));
+      if (label && !NOISE.some(rx => rx.test(label))) out.add(titleCase(label));
     }
 
     // name + vicinity hints

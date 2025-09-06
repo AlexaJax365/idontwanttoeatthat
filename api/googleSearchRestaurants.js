@@ -13,8 +13,8 @@ export default async function handler(req, res) {
     const keywords = (cuisine || "").trim();
     if (!keywords) return res.status(400).json({ error: "Missing cuisine keyword" });
 
-    // try 4km → 8km → 16km → 32km → 50km
-    const radii = [4000, 8000, 16000, 32000, 50000];
+    // try 4km → 8km → 16km → 32km → 80km (≈ 50 mi)
+    const radii = [4000, 8000, 16000, 32000, 80000];
     let found = [];
 
     for (const r of radii) {
@@ -33,13 +33,13 @@ export default async function handler(req, res) {
         return res.status(200).json({
           restaurants: normalize(found),
           usedRadius: r,
-          radiusWarning: r > 80000 ? "Search radius exceeded 50 miles" : undefined
+          radiusWarning: r > 80000 ? "Search radius exceeded ~50 miles" : undefined
         });
       }
     }
 
     // still none:
-    return res.status(200).json({ restaurants: [], usedRadius: radii[radii.length - 1], radiusWarning: "No matches within 50km+" });
+    return res.status(200).json({ restaurants: [], usedRadius: radii[radii.length - 1], radiusWarning: "No matches within ~50 miles" });
   } catch (e) {
     console.error("googleSearchRestaurants error:", e);
     return res.status(500).json({ error: "Internal error" });

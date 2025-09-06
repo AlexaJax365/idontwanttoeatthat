@@ -1,3 +1,4 @@
+// src/components/MealSuggestions.js
 import React, { useEffect, useState } from 'react';
 import './MealSuggestions.css';
 
@@ -13,19 +14,16 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
         const accepted = (acceptedCuisines || []).filter(Boolean);
         let all = [];
 
-        // If nothing accepted, just show nearby restaurants (no keyword)
         if (accepted.length === 0) {
-          const url = buildNearbyAnyUrl(coords);
-          const base = await fetch(url).then(r => r.json());
-          const items = base?.restaurants || base; // support either shape
-          all = items || [];
+          // Fallback: generic nearby restaurants (use keyword "restaurant")
+          const base = await fetch(buildCuisineUrl(coords, "restaurant")).then(r => r.json());
+          const items = base?.restaurants || base || [];
+          all = items;
         } else {
-          // fetch per cuisine; merge & de-dup by place_id
+          // Fetch per accepted cuisine; merge & de-dup by place_id
           const results = await Promise.all(
             accepted.map(c =>
-              fetch(buildCuisineUrl(coords, c))
-                .then(r => r.json())
-                .catch(() => ({ restaurants: [] }))
+              fetch(buildCuisineUrl(coords, c)).then(r => r.json()).catch(() => ({ restaurants: [] }))
             )
           );
           const merged = {};
@@ -35,11 +33,10 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
           all = Object.values(merged);
         }
 
-        // filter out items matching *rejected* words (safety)
-        const rejectSet = new Set(rejectedCuisines.map(x => x.toLowerCase()));
+        // Filter out items that match rejected terms (safety)
+        const rejectSet = new Set((rejectedCuisines || []).map(x => x.toLowerCase()));
         const final = all.filter(item => {
           const name = `${item.name} ${item.address}`.toLowerCase();
-          // If any rejected word appears in name/address/types, drop it
           if ([...rejectSet].some(rej => rej && name.includes(rej))) return false;
           return true;
         });
@@ -85,30 +82,20 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
 
 function buildCuisineUrl(coords, cuisine) {
   const q = new URLSearchParams({
-    cuisine,
+    cuisine: cuisine || "restaurant",
     latitude: String(coords.lat),
     longitude: String(coords.lon),
     radius: "4000"
   });
-  return `/api/googleSearchRestaurants?${q}`;
+  return `/api/googleSearchRestaurants?${q.toString()}`;
 }
-function buildNearbyAnyUrl(coords) {
-  // fallback: search for restaurants with no cuisine keyword → use a generic cuisine like "food"
-  const q = new URLSearchParams({
-    cuisine: "restaurant",
-    latitude: String(coords.lat),
-    longitude: String(coords.lon),
-    radius: "4000"
-  });
-  return `/api/googleSearchRestaurants?${q}`;
-}
+
 function photoUrl(ref) {
   if (!ref) return "";
-  const key = process.env.REACT_APP_GOOGLE_MAPS_API_KEY; // optional for client photo fetch; or proxy via server
-  if (!key) return "";
-  const p = new URLSearchParams({ maxwidth: "400", photoreference: ref, key });
-  return `https://maps.googleapis.com/maps/api/place/photo?${p}`;
+  const p = new URLSearchParams({ ref, maxwidth: "400" });
+  return `/api/googlePlacePhoto?${p.toString()}`;
 }
+
 function getCoords() {
   return new Promise((resolve) => {
     if (navigator.geolocation) {
