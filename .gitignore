@@ -1,3 +1,30 @@
-node_modules/
-build/
+# Dependencies
+/node_modules
+
+# Production build
+/build
+
+# Local environment variables
 .env
+.env.local
+.env.*.local
+
+# API key folders (don’t keep secrets in Git!)
+/API Keys
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+
+# Misc
+package-lock.json
