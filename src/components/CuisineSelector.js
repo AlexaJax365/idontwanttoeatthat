@@ -1,19 +1,24 @@
 // src/components/CuisineSelector.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import './CuisineSelector.css';
 
 function CuisineSelector({ onNext }) {
   const [cuisines, setCuisines] = useState([]);
   const [rejected, setRejected] = useState([]);
   const [batchIndex, setBatchIndex] = useState(0);
+
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState("");
 
+  // 🔁 Controls for progressively asking the API for MORE labels
+  const [minLabels, setMinLabels] = useState(16); // start with 16
+  const [fetchAttempt, setFetchAttempt] = useState(0); // bump this to refetch
+  const [jitterSeed, setJitterSeed] = useState(0); // a small nudge to lat/lon
+
   const batchSize = 10;
   const defaultLoc = { lat: 40.7128, lon: -74.0060 }; // NYC fallback
   const DEBUG = false;
-  const CLIENT_TIMEOUT_MS = 2500; // abort slow fetches quickly
 
   // 1) Get user location (fallback to NYC)
   useEffect(() => {
@@ -33,59 +38,47 @@ function CuisineSelector({ onNext }) {
     }
   }, []);
 
-  // Helper: call the API in FAST mode with a client timeout
-  async function fetchCuisinesFast({ lat, lon, radius }) {
-    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&radius=${radius}&minLabels=12&mode=fast`;
-    if (DEBUG) console.log("⚡ fetch:", url);
+  // Small jitter so subsequent fetches can shake loose slightly different places
+  const jitteredLocation = useMemo(() => {
+    if (!location) return null;
+    if (!jitterSeed) return location;
 
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
+    // ~0.02 deg ~= ~2.2 km; keep it tiny to stay local
+    const delta = 0.02 * (jitterSeed % 5); // grows a bit on each try, loops every 5
+    return {
+      lat: location.lat + delta,
+      lon: location.lon - delta / 2
+    };
+  }, [location, jitterSeed]);
 
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+  // Helper: fetch cuisines from your serverless API
+  async function fetchCuisinesDeep({ lat, lon, wantedMinLabels }) {
+    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}`
+      + `&mode=deep&minLabels=${wantedMinLabels}&maxPages=3`;
+    if (DEBUG) console.log("🌐 fetch:", url);
 
-      // Accept either plain array or { cuisines: [...] }
-      const list = Array.isArray(data)
-        ? data
-        : (data && typeof data === 'object' && Array.isArray(data.cuisines))
-          ? data.cuisines
-          : [];
-
-      // Dedupe + clean + sort
-      const unique = Array.from(new Set(list.map(x => String(x).trim()).filter(Boolean)))
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-
-      return unique;
-    } catch (e) {
-      if (DEBUG) console.warn("Fetch failed/aborted:", e?.message);
-      return [];
-    } finally {
-      clearTimeout(t);
-    }
-  }
-
-  // Deep fetch: paginate & wider radii via server
-  async function fetchCuisinesDeep({ lat, lon }) {
-    const url = `/api/googleCuisinesByLocation?latitude=${lat}&longitude=${lon}&minLabels=16&mode=deep&maxPages=3`;
-    const res = await fetch(url);
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const list = Array.isArray(data)
-      ? data
-      : (data && typeof data === 'object' && Array.isArray(data.cuisines))
-        ? data.cuisines
-        : [];
-    return Array.from(new Set(list.map(s => String(s).trim()).filter(Boolean)))
-      .sort((a,b)=>a.localeCompare(b, undefined, {sensitivity:'base'}));
+
+    const list = Array.isArray(data) ? data : Array.isArray(data?.cuisines) ? data.cuisines : [];
+    const uniqueSorted = Array.from(new Set(list.map(x => String(x).trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    if (DEBUG) {
+      console.log("✅ cuisines len:", uniqueSorted.length, uniqueSorted);
+      if (data?.usedRadius) console.log("usedRadius:", data.usedRadius);
+      if (data?.attempts) console.log("attempts:", data.attempts);
+    }
+
+    return uniqueSorted;
   }
 
-  // 2) Load cuisines dynamically with quick radius expansion (fast, no pagination)
+  // 2) Load cuisines with retries driven by (minLabels, jitterSeed, fetchAttempt)
   useEffect(() => {
-    if (!location) return;
+    if (!jitteredLocation) return;
 
     let cancelled = false;
-
     (async () => {
       try {
         setLoading(true);
@@ -93,25 +86,14 @@ function CuisineSelector({ onNext }) {
         setRejected([]);
         setBatchIndex(0);
 
-        const attempts = [
-          { radius: 8000 },   // ~5 mi
-          { radius: 16000 },  // ~10 mi
-          { radius: 32000 },  // ~20 mi
-          { radius: 50000 },  // ~31 mi
-        ];
-
-        let found = [];
-        for (const a of attempts) {
-          const got = await fetchCuisinesFast({ lat: location.lat, lon: location.lon, radius: a.radius });
-          if (DEBUG) console.log(`📍 radius ${a.radius} → ${got.length} cuisines`);
-          found = got;
-          if (found.length >= 8) break; // “good enough” threshold
-        }
+        const got = await fetchCuisinesDeep({
+          lat: jitteredLocation.lat,
+          lon: jitteredLocation.lon,
+          wantedMinLabels: minLabels
+        });
 
         if (cancelled) return;
-
-        setCuisines(found);
-        if (DEBUG) console.log("🍣 final cuisines:", found);
+        setCuisines(got);
       } catch (err) {
         console.error("Failed to load dynamic categories", err);
         if (!cancelled) {
@@ -124,10 +106,19 @@ function CuisineSelector({ onNext }) {
     })();
 
     return () => { cancelled = true; };
-  }, [location]); // keep deps minimal to avoid loops
+  }, [jitteredLocation, minLabels, fetchAttempt]); // re-run when we ask for more, or nudge location
 
-  const currentBatch = cuisines.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+  // Current batch slice
+  const currentBatch = useMemo(
+    () => cuisines.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize),
+    [cuisines, batchIndex]
+  );
+  const shownSoFar = useMemo(
+    () => cuisines.slice(0, (batchIndex + 1) * batchSize),
+    [cuisines, batchIndex]
+  );
 
+  // Toggle rejection for a label
   const toggleReject = (cuisine) => {
     setRejected(prev =>
       prev.includes(cuisine)
@@ -136,8 +127,10 @@ function CuisineSelector({ onNext }) {
     );
   };
 
-  // “I don’t like any of these” = reject the current batch, then advance (and deep-fetch if needed)
-  const nextBatch = async () => {
+  // “I don’t like any of these”
+  //  - If there’s another local batch, advance to it
+  //  - Otherwise, escalate: ask the API for more labels (minLabels += 8) and add a slight location jitter
+  const handleRejectAllCurrent = () => {
     if (currentBatch.length) {
       setRejected(prev => [
         ...prev,
@@ -145,34 +138,23 @@ function CuisineSelector({ onNext }) {
       ]);
     }
     const nextIndex = batchIndex + 1;
-    if (nextIndex * batchSize >= cuisines.length) {
-      // We ran out. Try a deep fetch to load more cuisines dynamically.
-      try {
-        setLoading(true);
-        const more = await fetchCuisinesDeep({ lat: location.lat, lon: location.lon });
-        if (more.length > cuisines.length) {
-          setCuisines(more);
-          setBatchIndex(nextIndex);
-        } else {
-          alert("No more cuisines left to show.");
-        }
-      } catch {
-        alert("Couldn't find more cuisines right now.");
-      } finally {
-        setLoading(false);
-      }
-    } else {
+    if (nextIndex * batchSize < cuisines.length) {
       setBatchIndex(nextIndex);
+      return;
     }
+    // No more local batches → escalate
+    setMinLabels(m => Math.min(64, m + 8)); // cap to avoid huge UI lists
+    setJitterSeed(s => s + 1);
+    setFetchAttempt(t => t + 1);
   };
 
+  // Manual retry for error/empty
   const retryNow = () => {
+    setErrMsg("");
     setCuisines([]);
     setRejected([]);
     setBatchIndex(0);
-    setErrMsg("");
-    setLoading(true);
-    setLocation(loc => ({ ...(loc || defaultLoc) })); // triggers effect
+    setFetchAttempt(t => t + 1);
   };
 
   return (
@@ -180,6 +162,7 @@ function CuisineSelector({ onNext }) {
       <h2>Tap the cuisines you DON’T want:</h2>
 
       {loading && <p>Loading cuisines near you…</p>}
+
       {!loading && errMsg && (
         <div>
           <p style={{ color: 'crimson' }}>{errMsg}</p>
@@ -187,7 +170,7 @@ function CuisineSelector({ onNext }) {
         </div>
       )}
 
-      {!loading && !errMsg && currentBatch.length === 0 && cuisines.length === 0 && (
+      {!loading && !errMsg && cuisines.length === 0 && (
         <div>
           <p>No cuisines found nearby right now.</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -210,37 +193,39 @@ function CuisineSelector({ onNext }) {
             className={rejected.includes(cuisine) ? "rejected" : ""}
             onClick={() => toggleReject(cuisine)}
             type="button"
+            disabled={loading}
           >
             {cuisine}
           </button>
         ))}
       </div>
 
-      <p style={{ marginTop: 4 }}>
-        Selected: {rejected.length} • Showing {currentBatch.length} of {cuisines.length}
-      </p>
-
-      <div style={{ marginTop: '1em', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        <button onClick={nextBatch} type="button">I don’t like any of these ⟳</button>
-        <button
-          onClick={() => {
-            // Accept only from the CURRENT batch (stricter, clearer)
-            const accepted = currentBatch.filter(title => !rejected.includes(title));
-            if (DEBUG) {
-              console.log("🚦 rejected:", rejected);
-              console.log("🚦 accepted:", accepted);
-            }
-            onNext(rejected, accepted);
-          }}
-          type="button"
-        >
-          Next ➡
-        </button>
-      </div>
+      {!!cuisines.length && (
+        <div style={{ marginTop: '1em', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={handleRejectAllCurrent} type="button" disabled={loading}>
+            I don’t like any of these ⟳
+          </button>
+          <button
+            onClick={() => {
+              const accepted = shownSoFar.filter(title => !rejected.includes(title));
+              if (DEBUG) {
+                console.log("🚦 rejected:", rejected);
+                console.log("🚦 accepted:", accepted);
+              }
+              onNext(rejected, accepted);
+            }}
+            type="button"
+            disabled={loading}
+          >
+            Next ➡
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 export default CuisineSelector;
+
 
 
