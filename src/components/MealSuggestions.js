@@ -11,7 +11,7 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchMeals(lat, lon, searchRadius = radius) {
+    async function fetchMeals(lat, lon, r = radius) {
       setLoading(true);
       setWarning("");
 
@@ -19,32 +19,41 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
         latitude: String(lat),
         longitude: String(lon),
         limit: "24",
-        radius: String(searchRadius)
+        radius: String(r)
       });
-
-      if (acceptedCuisines.length) {
-        params.set("accepted", acceptedCuisines.join(','));
-      }
+      if (acceptedCuisines.length) params.set("accepted", acceptedCuisines.join(','));
 
       const url = `/api/googleSearchRestaurants?${params.toString()}`;
       const res = await fetch(url, { cache: 'no-store' });
       const data = await res.json();
-
       if (cancelled) return;
 
-      const found = Array.isArray(data?.restaurants) ? data.restaurants : [];
+      let found = Array.isArray(data?.restaurants) ? data.restaurants : [];
+
+      // Final client-side guard: if user rejected anything, ensure none of those appear.
+      if (rejectedCuisines.length) {
+        const rejSet = new Set(rejectedCuisines.map(x => x.toLowerCase()));
+        found = found.filter(p => {
+          const types = (p.types || []).map(t => String(t).toLowerCase());
+          const labelsFromTypes = types
+            .filter(t => t.endsWith('_restaurant'))
+            .map(t => t.replace(/_restaurant$/, '').replace(/_/g, ' '));
+          const name = `${p.name || ""} ${p.vicinity || ""}`.toLowerCase();
+          const hitsRejected = labelsFromTypes.some(l => rejSet.has(l)) || [...rejSet].some(rj => name.includes(rj));
+          return !hitsRejected;
+        });
+      }
+
       setMeals(found);
       if (data?.warning) setWarning(data.warning);
       setLoading(false);
 
-      // If nothing found, auto-expand radius up to 120km
-      if (!found.length && searchRadius < 120000) {
-        setRadius(searchRadius + 8000);
+      if (!found.length && r < 120000) {
+        setRadius(r + 8000); // auto-expand if empty
       }
     }
 
     if (mealType === "home") {
-      // You can plug Spoonacular here for recipes based on acceptedCuisines.
       setMeals([]);
       setLoading(false);
       return;
@@ -53,19 +62,18 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => fetchMeals(coords.latitude, coords.longitude),
-        () => fetchMeals(40.7128, -74.0060) // NYC fallback
+        () => fetchMeals(40.7128, -74.0060)
       );
     } else {
       fetchMeals(40.7128, -74.0060);
     }
 
     return () => { cancelled = true; };
-  }, [acceptedCuisines, mealType, radius]);
+  }, [acceptedCuisines, rejectedCuisines, mealType, radius]);
 
   const handleNope = (idx) => {
     setMeals(prev => {
       const next = prev.filter((_, i) => i !== idx);
-      // If we’ve eliminated everything, nudge radius to fetch more on next render
       if (next.length === 0 && radius < 120000) setRadius(r => r + 8000);
       return next;
     });
@@ -88,9 +96,7 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
         Here are some {mealType === "takeout" ? "eat out" : "restaurant-style"} ideas near you:
       </h2>
 
-      {warning && (
-        <p style={{ color: '#a15' }}>{warning}</p>
-      )}
+      {warning && <p style={{ color: '#a15' }}>{warning}</p>}
 
       {loading ? (
         <p>Loading…</p>
