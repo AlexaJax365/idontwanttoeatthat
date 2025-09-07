@@ -5,13 +5,13 @@ import './MealSuggestions.css';
 export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisines = [], mealType = "" }) {
   const [meals, setMeals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [radius, setRadius] = useState(8000); // start ~5 miles
+  const [maxMiles, setMaxMiles] = useState(10);  // default close-by
   const [warning, setWarning] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchMeals(lat, lon, r = radius) {
+    async function fetchMeals(lat, lon) {
       setLoading(true);
       setWarning("");
 
@@ -19,7 +19,8 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
         latitude: String(lat),
         longitude: String(lon),
         limit: "24",
-        radius: String(r)
+        maxMiles: String(maxMiles),
+        expand: "0" // do not auto-expand; user can press a button
       });
       if (acceptedCuisines.length) params.set("accepted", acceptedCuisines.join(','));
 
@@ -30,7 +31,7 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
 
       let found = Array.isArray(data?.restaurants) ? data.restaurants : [];
 
-      // Final client-side guard: if user rejected anything, ensure none of those appear.
+      // Client-side guard against rejected cuisines
       if (rejectedCuisines.length) {
         const rejSet = new Set(rejectedCuisines.map(x => x.toLowerCase()));
         found = found.filter(p => {
@@ -47,10 +48,6 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
       setMeals(found);
       if (data?.warning) setWarning(data.warning);
       setLoading(false);
-
-      if (!found.length && r < 120000) {
-        setRadius(r + 8000); // auto-expand if empty
-      }
     }
 
     if (mealType === "home") {
@@ -69,14 +66,10 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
     }
 
     return () => { cancelled = true; };
-  }, [acceptedCuisines, rejectedCuisines, mealType, radius]);
+  }, [acceptedCuisines, rejectedCuisines, mealType, maxMiles]);
 
   const handleNope = (idx) => {
-    setMeals(prev => {
-      const next = prev.filter((_, i) => i !== idx);
-      if (next.length === 0 && radius < 120000) setRadius(r => r + 8000);
-      return next;
-    });
+    setMeals(prev => prev.filter((_, i) => i !== idx));
   };
 
   const handleSoundsGood = (mapsUrl) => {
@@ -90,6 +83,8 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
     return "https://source.unsplash.com/featured/?restaurant";
   };
 
+  const canExpand = maxMiles < 50;
+
   return (
     <div className="meal-suggestion-grid">
       <h2>
@@ -98,10 +93,22 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
 
       {warning && <p style={{ color: '#a15' }}>{warning}</p>}
 
+      <div style={{ marginBottom: 12 }}>
+        <strong>Search radius:</strong> ~{maxMiles} miles{' '}
+        {canExpand && (
+          <button
+            style={{ marginLeft: 8 }}
+            onClick={() => setMaxMiles(m => Math.min(50, m + 5))}
+          >
+            Search farther (+5 mi)
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <p>Loading…</p>
       ) : meals.length === 0 ? (
-        <p>No matching places found. Try going back or adjusting preferences.</p>
+        <p>No matching places found within ~{maxMiles} miles. {canExpand ? 'Try “Search farther”.' : ''}</p>
       ) : (
         <div className="grid">
           {meals.map((meal, index) => (
