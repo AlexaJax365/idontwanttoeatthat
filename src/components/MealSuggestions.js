@@ -5,107 +5,112 @@ import './MealSuggestions.css';
 export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisines = [], mealType = "" }) {
   const [meals, setMeals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [radius, setRadius] = useState(8000); // start ~5 miles
+  const [warning, setWarning] = useState("");
 
   useEffect(() => {
-    async function run() {
+    let cancelled = false;
+
+    async function fetchMeals(lat, lon, searchRadius = radius) {
       setLoading(true);
-      try {
-        const coords = await getCoords();
-        const accepted = (acceptedCuisines || []).filter(Boolean);
-        let all = [];
+      setWarning("");
 
-        if (accepted.length === 0) {
-          // Fallback: generic nearby restaurants (use keyword "restaurant")
-          const base = await fetch(buildCuisineUrl(coords, "restaurant")).then(r => r.json());
-          const items = base?.restaurants || base || [];
-          all = items;
-        } else {
-          // Fetch per accepted cuisine; merge & de-dup by place_id
-          const results = await Promise.all(
-            accepted.map(c =>
-              fetch(buildCuisineUrl(coords, c)).then(r => r.json()).catch(() => ({ restaurants: [] }))
-            )
-          );
-          const merged = {};
-          results.forEach(({ restaurants = [] }) => {
-            restaurants.forEach(x => { merged[x.id] = x; });
-          });
-          all = Object.values(merged);
-        }
+      const params = new URLSearchParams({
+        latitude: String(lat),
+        longitude: String(lon),
+        limit: "24",
+        radius: String(searchRadius)
+      });
 
-        // Filter out items that match rejected terms (safety)
-        const rejectSet = new Set((rejectedCuisines || []).map(x => x.toLowerCase()));
-        const final = all.filter(item => {
-          const name = `${item.name} ${item.address}`.toLowerCase();
-          if ([...rejectSet].some(rej => rej && name.includes(rej))) return false;
-          return true;
-        });
+      if (acceptedCuisines.length) {
+        params.set("accepted", acceptedCuisines.join(','));
+      }
 
-        setMeals(final);
-      } finally {
-        setLoading(false);
+      const url = `/api/googleSearchRestaurants?${params.toString()}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+
+      if (cancelled) return;
+
+      const found = Array.isArray(data?.restaurants) ? data.restaurants : [];
+      setMeals(found);
+      if (data?.warning) setWarning(data.warning);
+      setLoading(false);
+
+      // If nothing found, auto-expand radius up to 120km
+      if (!found.length && searchRadius < 120000) {
+        setRadius(searchRadius + 8000);
       }
     }
-    run();
-  }, [rejectedCuisines, acceptedCuisines, mealType]);
 
-  const handleNope = (id) => setMeals(prev => prev.filter(x => x.id !== id));
-  const handleSoundsGood = (url) => window.open(url, '_blank', 'noopener');
+    if (mealType === "home") {
+      // You can plug Spoonacular here for recipes based on acceptedCuisines.
+      setMeals([]);
+      setLoading(false);
+      return;
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => fetchMeals(coords.latitude, coords.longitude),
+        () => fetchMeals(40.7128, -74.0060) // NYC fallback
+      );
+    } else {
+      fetchMeals(40.7128, -74.0060);
+    }
+
+    return () => { cancelled = true; };
+  }, [acceptedCuisines, mealType, radius]);
+
+  const handleNope = (idx) => {
+    setMeals(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      // If we’ve eliminated everything, nudge radius to fetch more on next render
+      if (next.length === 0 && radius < 120000) setRadius(r => r + 8000);
+      return next;
+    });
+  };
+
+  const handleSoundsGood = (mapsUrl) => {
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const imgFor = (meal) => {
+    if (meal.photo_reference) {
+      return `/api/googlephoto?ref=${encodeURIComponent(meal.photo_reference)}&maxwidth=640`;
+    }
+    return "https://source.unsplash.com/featured/?restaurant";
+  };
 
   return (
     <div className="meal-suggestion-grid">
-      <h2>Here are some {mealType === "takeout" ? "eat out" : "restaurant-style"} ideas near you:</h2>
+      <h2>
+        Here are some {mealType === "takeout" ? "eat out" : "restaurant-style"} ideas near you:
+      </h2>
 
-      {loading ? <p>Loading...</p>
-        : meals.length === 0 ? <p>No matching meals found. Try going back and adjusting your preferences.</p>
-        : (
-          <div className="grid">
-            {meals.map((m) => (
-              <div className="card" key={m.id}>
-                <img
-                  src={photoUrl(m.photoRef) || "https://source.unsplash.com/featured/?restaurant"}
-                  alt={m.name}
-                />
-                <h3>{m.name}</h3>
-                <p>{m.address}</p>
-                <div className="buttons">
-                  <button onClick={() => handleNope(m.id)}>Nope</button>
-                  <button onClick={() => handleSoundsGood(m.url)}>Sounds Good</button>
-                </div>
+      {warning && (
+        <p style={{ color: '#a15' }}>{warning}</p>
+      )}
+
+      {loading ? (
+        <p>Loading…</p>
+      ) : meals.length === 0 ? (
+        <p>No matching places found. Try going back or adjusting preferences.</p>
+      ) : (
+        <div className="grid">
+          {meals.map((meal, index) => (
+            <div className="card" key={meal.place_id || index}>
+              <img src={imgFor(meal)} alt={meal.name} />
+              <h3>{meal.name}</h3>
+              <p>{meal.vicinity || "Location not available"}</p>
+              <div className="buttons">
+                <button onClick={() => handleNope(index)}>Nope</button>
+                <button onClick={() => handleSoundsGood(meal.maps_url)}>Sounds Good</button>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
-}
-
-function buildCuisineUrl(coords, cuisine) {
-  const q = new URLSearchParams({
-    cuisine: cuisine || "restaurant",
-    latitude: String(coords.lat),
-    longitude: String(coords.lon),
-    radius: "4000"
-  });
-  return `/api/googleSearchRestaurants?${q.toString()}`;
-}
-
-function photoUrl(ref) {
-  if (!ref) return "";
-  const p = new URLSearchParams({ ref, maxwidth: "400" });
-  return `/api/googlePlacePhoto?${p.toString()}`;
-}
-
-function getCoords() {
-  return new Promise((resolve) => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => resolve({ lat: coords.latitude, lon: coords.longitude }),
-        () => resolve({ lat: 40.7128, lon: -74.0060 }),
-        { timeout: 8000 }
-      );
-    } else {
-      resolve({ lat: 40.7128, lon: -74.0060 });
-    }
-  });
 }
