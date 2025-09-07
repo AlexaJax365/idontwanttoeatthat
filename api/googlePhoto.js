@@ -1,30 +1,44 @@
-// /api/googlePhoto.js
+// /api/googlephoto.js
 export default async function handler(req, res) {
   try {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
-    const { ref, maxwidth = 600 } = req.query;
-    if (!ref) return res.status(400).send("Missing photo reference");
 
+    const ref = req.query.ref;
+    const w = Math.min(parseInt(req.query.maxwidth || req.query.w || "640", 10), 1600);
+    if (!ref) return res.status(400).send("Missing required 'ref' (photo_reference)");
+
+    // Build the Places Photos URL
     const params = new URLSearchParams({
       key: apiKey,
       photoreference: String(ref),
-      maxwidth: String(maxwidth),
+      maxwidth: String(isNaN(w) ? 640 : w)
     });
+    const url = `https://maps.googleapis.com/maps/api/place/photo?${params.toString()}`;
 
-    const photoResp = await fetch(`https://maps.googleapis.com/maps/api/place/photo?${params}`);
-    // The Places Photo API responds with a redirect to the actual image:
-    if (photoResp.status === 302 || photoResp.redirected) {
-      res.setHeader("Location", photoResp.url);
-      return res.status(302).end();
+    // Fetch the image (Google will 302 to a CDN; follow it and stream the bytes)
+    const upstream = await fetch(url, { redirect: "follow", cache: "no-store" });
+
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => "");
+      return res
+        .status(502)
+        .send(`Failed to fetch photo (status ${upstream.status}): ${text || "Unknown error"}`);
     }
 
-    // If not 302, stream the content:
-    const arrayBuffer = await photoResp.arrayBuffer();
-    res.setHeader("Content-Type", photoResp.headers.get("Content-Type") || "image/jpeg");
+    // Pass through content-type and cache headers for better perf
+    const contentType = upstream.headers.get("content-type") || "image/jpeg";
+    const cacheControl =
+      upstream.headers.get("cache-control") || "public, max-age=86400, s-maxage=86400";
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", cacheControl);
+
+    // Stream the image body to the client
+    const arrayBuffer = await upstream.arrayBuffer();
     res.status(200).send(Buffer.from(arrayBuffer));
-  } catch (e) {
-    console.error("googlePhoto error:", e);
-    res.status(500).send("Failed to fetch photo");
+  } catch (err) {
+    console.error("googlephoto proxy error:", err);
+    res.status(500).send("Photo proxy error");
   }
 }
