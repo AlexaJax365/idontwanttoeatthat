@@ -145,10 +145,16 @@ function slimPlace(p){
     vicinity: p.vicinity,
     price_level: p.price_level,
     types: p.types,
+    // ⬇️ add coordinates for distance calc
+    geo: {
+      lat: p.geometry?.location?.lat ?? null,
+      lng: p.geometry?.location?.lng ?? null,
+    },
     photo_reference: p.photos?.[0]?.photo_reference || p._photo_reference || null,
     maps_url: p.place_id ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}` : undefined
   };
 }
+
 
 function haversineMeters(lat1, lon1, lat2, lon2){
   const toRad = v => (v*Math.PI)/180;

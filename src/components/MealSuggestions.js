@@ -7,11 +7,13 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
   const [loading, setLoading] = useState(true);
   const [maxMiles, setMaxMiles] = useState(10);  // default close-by
   const [warning, setWarning] = useState("");
+  const [userLoc, setUserLoc] = useState(null);  // ⬅️ store user lat/lon
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchMeals(lat, lon) {
+      setUserLoc({ lat, lon }); // ⬅️ save for distance display
       setLoading(true);
       setWarning("");
 
@@ -20,7 +22,7 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
         longitude: String(lon),
         limit: "24",
         maxMiles: String(maxMiles),
-        expand: "0" // do not auto-expand; user can press a button
+        expand: "0"
       });
       if (acceptedCuisines.length) params.set("accepted", acceptedCuisines.join(','));
 
@@ -83,6 +85,25 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
     return "https://source.unsplash.com/featured/?restaurant";
   };
 
+  // ⬇️ distance helpers
+  const toMiles = (meters) => meters / 1609.344;
+  const haversineMeters = (lat1, lon1, lat2, lon2) => {
+    const toRad = v => (v * Math.PI) / 180;
+    const R = 6371000;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  };
+  const distanceLabel = (meal) => {
+    if (!userLoc || !meal?.geo?.lat || !meal?.geo?.lng) return null;
+    const meters = haversineMeters(userLoc.lat, userLoc.lon, meal.geo.lat, meal.geo.lng);
+    const miles = toMiles(meters);
+    return `~${miles.toFixed(1)} mi`;
+  };
+
   const canExpand = maxMiles < 50;
 
   return (
@@ -115,7 +136,10 @@ export default function MealSuggestions({ rejectedCuisines = [], acceptedCuisine
             <div className="card" key={meal.place_id || index}>
               <img src={imgFor(meal)} alt={meal.name} />
               <h3>{meal.name}</h3>
-              <p>{meal.vicinity || "Location not available"}</p>
+              <p>
+                {distanceLabel(meal) ? <span>{distanceLabel(meal)} • </span> : null}
+                {meal.vicinity || "Location not available"}
+              </p>
               <div className="buttons">
                 <button onClick={() => handleNope(index)}>Nope</button>
                 <button onClick={() => handleSoundsGood(meal.maps_url)}>Sounds Good</button>
